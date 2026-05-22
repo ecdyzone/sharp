@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline S(H)ARP — Visão técnica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f3ea;
+  --bg-tint: #fcfaf3;
+  --surface: #ffffff;
+  --ink: #1c1c20;
+  --ink-2: #4a4a52;
+  --ink-3: #8a8a92;
+  --hairline: #e2dccb;
+  --hairline-strong: #c9c2ad;
+
+  --prereq: #6b6248;
+  --prereq-tint: #ece6d2;
+  --pipeline: #2a4e5c;
+  --pipeline-tint: #dee8ec;
+  --user: #a8541b;
+  --user-tint: #f4e1cb;
+  --user-strong: #7d3e14;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse at top left, rgba(168, 84, 27, 0.04), transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(42, 78, 92, 0.04), transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+.shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 56px 40px 80px;
+}
+
+/* ─────────────── HERO ─────────────── */
+
+.hero { margin-bottom: 56px; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 16px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 360;
+  font-size: clamp(2.8rem, 6vw, 4.6rem);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  margin: 0;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  color: var(--ink);
+}
+
+.title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--user-strong);
+}
+
+.subtitle {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  color: var(--ink-2);
+  margin: 12px 0 0;
+  font-variation-settings: "opsz" 36;
+}
+
+.intro {
+  margin: 28px 0 0;
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  max-width: 680px;
+  line-height: 1.65;
+}
+
+.divider {
+  margin: 32px 0 0;
+  border: none;
+  border-top: 1px solid var(--hairline);
+}
+
+.legend {
+  margin: 28px 0 0;
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-dot.prereq { background: var(--prereq); }
+.legend-dot.pipeline { background: var(--pipeline); }
+.legend-dot.user { background: var(--user); box-shadow: 0 0 0 3px var(--user-tint); }
+
+/* ─────────────── MAIN LAYOUT ─────────────── */
+
+.main {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 64px;
+  align-items: start;
+}
+
+/* ─────────────── SIDEBAR / TOC ─────────────── */
+
+.toc {
+  position: sticky;
+  top: 24px;
+  padding-right: 8px;
+}
+
+.toc-heading {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 18px;
+  padding-left: 14px;
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-left: 1px solid var(--hairline);
+}
+
+.toc-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px 9px 16px;
+  cursor: pointer;
+  position: relative;
+  margin-left: -1px;
+  border-left: 1px solid transparent;
+  transition: all 0.2s ease;
+  font-size: 0.88rem;
+  color: var(--ink-2);
+}
+
+.toc-item:hover {
+  color: var(--ink);
+  background: var(--bg-tint);
+}
+
+.toc-item.active {
+  color: var(--ink);
+  border-left: 1px solid var(--user);
+  background: linear-gradient(90deg, var(--user-tint) 0%, transparent 100%);
+  font-weight: 500;
+}
+
+.toc-num {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  min-width: 18px;
+  font-weight: 400;
+}
+
+.toc-item.active .toc-num { color: var(--user-strong); }
+
+.toc-label {
+  flex: 1;
+  line-height: 1.3;
+}
+
+.toc-marker {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.toc-marker.prereq { background: var(--prereq); }
+.toc-marker.pipeline { background: var(--pipeline); }
+.toc-marker.user { background: var(--user); }
+
+/* ─────────────── DETAIL PANEL ─────────────── */
+
+.detail {
+  min-height: 600px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  margin-bottom: 6px;
+}
+
+.detail-number {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 4.5rem;
+  line-height: 1;
+  color: var(--ink-3);
+  font-variation-settings: "opsz" 144;
+  letter-spacing: -0.02em;
+}
+
+.detail-number.user { color: var(--user); }
+
+.detail-title-wrap { flex: 1; padding-top: 16px; }
+
+.detail-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 100px;
+  margin-bottom: 10px;
+}
+
+.detail-tag.prereq {
+  background: var(--prereq-tint);
+  color: var(--prereq);
+}
+
+.detail-tag.pipeline {
+  background: var(--pipeline-tint);
+  color: var(--pipeline);
+}
+
+.detail-tag.user {
+  background: var(--user-tint);
+  color: var(--user-strong);
+}
+
+.detail-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 2.2rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+  font-variation-settings: "opsz" 72;
+}
+
+.detail-subtitle {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 1.15rem;
+  color: var(--ink-2);
+  margin: 6px 0 0;
+}
+
+/* ─────────────── FLOW BLOCKS ─────────────── */
+
+.flow-section { margin-top: 40px; }
+
+.subblock {
+  margin-bottom: 28px;
+}
+
+.subblock-title {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--user-strong);
+  margin: 0 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--user-tint);
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.flow-box {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-box-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+.flow-box.input .flow-box-label { color: var(--pipeline); }
+.flow-box.process .flow-box-label { color: var(--user); }
+.flow-box.output .flow-box-label { color: var(--prereq); }
+
+.flow-box.process {
+  background: var(--bg-tint);
+  border-color: var(--hairline-strong);
+}
+
+.flow-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flow-list li {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+  line-height: 1.5;
+  word-break: break-word;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.flow-list li::before {
+  content: "·";
+  color: var(--ink-3);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font-size: 1.5rem;
+  user-select: none;
+}
+
+/* ─────────────── DESCRIPTION & NOTES ─────────────── */
+
+.description {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--hairline);
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--ink-2);
+  max-width: 720px;
+}
+
+.description::first-letter {
+  font-family: var(--font-display);
+  font-size: 2.2em;
+  font-weight: 400;
+  float: left;
+  line-height: 0.9;
+  margin: 4px 8px 0 0;
+  color: var(--ink);
+}
+
+.notes {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.note {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg-tint);
+  border-left: 2px solid var(--user);
+  border-radius: 0 4px 4px 0;
+}
+
+.note-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--user-strong);
+  flex-shrink: 0;
+  min-width: 90px;
+  padding-top: 2px;
+}
+
+.note-text {
+  font-size: 0.92rem;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ─────────────── NAVIGATION ─────────────── */
+
+.nav-row {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.nav-btn {
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 4px;
+  padding: 14px 22px;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 200px;
+  text-align: left;
+}
+
+.nav-btn.next { align-items: flex-end; text-align: right; }
+
+.nav-btn:hover:not(:disabled) {
+  border-color: var(--user);
+  background: var(--surface);
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.nav-btn-dir {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.nav-btn-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+/* ─────────────── ANIMATIONS ─────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.detail > * {
+  animation: fadeIn 0.4s ease backwards;
+}
+
+.detail > *:nth-child(1) { animation-delay: 0.0s; }
+.detail > *:nth-child(2) { animation-delay: 0.06s; }
+.detail > *:nth-child(3) { animation-delay: 0.12s; }
+.detail > *:nth-child(4) { animation-delay: 0.18s; }
+
+/* ─────────────── RESPONSIVE ─────────────── */
+
+@media (max-width: 900px) {
+  .shell { padding: 32px 20px; }
+  .main {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .toc { position: static; }
+  .flow-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .flow-arrow { transform: rotate(90deg); }
+  .detail-header { flex-direction: column; gap: 8px; }
+  .detail-number { font-size: 3rem; }
+  .detail-title { font-size: 1.7rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <header class="hero">
+    <p class="eyebrow">Projeto S(H)ARP · iGEM 2026 · Dry-lab</p>
+    <h1 class="title">Pipeline de <em>predição</em> de BGCs</h1>
+    <p class="subtitle">Da sequência bruta à predição de clusters biossintéticos, etapa por etapa</p>
+    <p class="intro">
+      Este documento detalha o fluxo técnico completo do software, com entradas, processamento e saídas explícitos para cada etapa.
+      Use a navegação à esquerda para saltar entre as etapas, ou as setas ← → do teclado para percorrer em sequência.
+    </p>
+
+    <hr class="divider">
+
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot prereq"></span>Pré-requisito</span>
+      <span class="legend-item"><span class="legend-dot pipeline"></span>Etapa do pipeline</span>
+      <span class="legend-item"><span class="legend-dot user"></span>Modelagem &amp; IA</span>
+    </div>
+  </header>
+
+  <main class="main">
+    <nav class="toc" aria-label="Navegação entre etapas">
+      <p class="toc-heading">Etapas</p>
+      <ul class="toc-list" id="toc-list"></ul>
+    </nav>
+
+    <article class="detail" id="detail" aria-live="polite"></article>
+  </main>
+
+</div>
+
+<script>
+const etapas = [
+  {
+    id: 0,
+    num: "00",
+    label: "Bancos auxiliares",
+    role: "prereq",
+    title: "Bancos auxiliares",
+    subtitle: "Pré-requisitos construídos uma única vez",
+    blocks: [{
+      inputs: ["seed sequences SARP", "download MiBIG", "download BGC Atlas", "download Pfam"],
+      processing: ["build_sarp_hmm.py", "build_kg.py", "ferramentas: hmmbuild, NetworkX"],
+      outputs: ["sarp_models.hmm", "pfam_models.hmm", "kg.gpickle"]
+    }],
+    description: "Os bancos de referência que alimentam o pipeline são produzidos apenas uma vez, no início do projeto, e versionados. A partir daí, todas as execuções subsequentes consomem esses artefatos sem reconstruí-los. Inclui o banco de HMMs para detecção de SARPs (construído a partir de sequências de referência conhecidas), o Pfam (baixado direto da fonte), e um knowledge graph que codifica relações entre clusters conhecidos e suas arquiteturas de domínio.",
+    notes: []
+  },
+  {
+    id: 1,
+    num: "01",
+    label: "Anotação do genoma",
+    role: "pipeline",
+    title: "Anotação do genoma",
+    subtitle: "Identificação de ORFs e atribuição funcional",
+    blocks: [{
+      inputs: ["genome.fasta"],
+      processing: ["annotate.py (wrapper Bakta)"],
+      outputs: ["annotated.gbk", "proteins.faa", "genes.gff"]
+    }],
+    description: "O genoma cru é anotado: o software detecta onde estão os genes, traduz cada um para sua sequência de proteína correspondente, e adiciona metadados funcionais sempre que possível. O resultado é o ponto de partida para todas as etapas seguintes.",
+    notes: []
+  },
+  {
+    id: 2,
+    num: "02",
+    label: "Detecção de âncoras",
+    role: "pipeline",
+    title: "Detecção de âncoras",
+    subtitle: "Duas frentes paralelas: proteína e DNA",
+    blocks: [
+      {
+        title: "2a — SARP por proteína",
+        inputs: ["proteins.faa", "sarp_models.hmm"],
+        processing: ["detect_sarp.py", "ferramenta: hmmscan"],
+        outputs: ["anchors.tsv (type=SARP)"]
+      },
+      {
+        title: "2b — Heptarepeats por DNA",
+        inputs: ["genome.fasta"],
+        processing: ["detect_heptarepeats.py", "ferramenta: FIMO (MEME Suite)"],
+        outputs: ["anchors.tsv (type=heptarepeat)"]
+      }
+    ],
+    description: "Localiza as âncoras que indicam a presença de um BGC. Em uma frente, a proteína SARP é detectada por HMM contra o proteoma; na outra, suas sequências-alvo no DNA são detectadas por busca de motivo. As duas frentes alimentam a mesma tabela de âncoras, que serve como ponto de partida para a próxima etapa.",
+    notes: []
+  },
+  {
+    id: 3,
+    num: "03",
+    label: "Extração de vizinhança",
+    role: "pipeline",
+    title: "Extração de vizinhança",
+    subtitle: "Janela genômica ao redor de cada âncora",
+    blocks: [{
+      inputs: ["anchors.tsv", "annotated.gbk"],
+      processing: ["extract_neighborhood.py"],
+      outputs: ["neighborhoods.tsv", "neighborhood_proteins.faa", "neighborhood_dna.fna"]
+    }],
+    description: "Para cada âncora, a janela é expandida em ±20 genes ou ±20kb (o que for maior). Âncoras próximas entre si são agrupadas em uma única região. O resultado é um conjunto de regiões candidatas, cada uma com suas proteínas e DNA correspondentes extraídos e marcados com um identificador de região.",
+    notes: []
+  },
+  {
+    id: 4,
+    num: "04",
+    label: "Anotação de domínios",
+    role: "pipeline",
+    title: "Anotação de domínios",
+    subtitle: "Caracterização funcional das proteínas da vizinhança",
+    blocks: [{
+      inputs: ["neighborhood_proteins.faa", "pfam_models.hmm"],
+      processing: ["annotate_domains.py", "ferramenta: hmmscan"],
+      outputs: ["domains.tsv"]
+    }],
+    description: "Cada proteína das regiões candidatas é escaneada contra o Pfam para identificar seus domínios funcionais. A tabela resultante lista, para cada proteína, quais domínios estão presentes, com qual significância estatística (e-value) e em quais coordenadas. Esses domínios viram features categóricas para o classificador.",
+    notes: []
+  },
+  {
+    id: 5,
+    num: "05",
+    label: "Extração de embeddings",
+    role: "user",
+    title: "Extração de embeddings",
+    subtitle: "Representação vetorial das proteínas via modelos de linguagem",
+    blocks: [{
+      inputs: ["neighborhood_proteins.faa"],
+      processing: ["extract_embeddings.py", "modelo: ESM-2", "operação: mean pooling sobre tokens"],
+      outputs: ["embeddings.parquet  ·  protein_id, region_id, vec[1280]"]
+    }],
+    description: "Para cada proteína, um modelo de linguagem de proteínas gera um vetor que captura características funcionais e evolutivas implícitas. Esses vetores capturam similaridade funcional mesmo quando a similaridade de sequência é baixa — ou seja, alcançam casos que HMMs sozinhos não conseguem identificar. O embedding entra como feature contínua no classificador.",
+    notes: [
+      { label: "MVP", text: "Apenas ESM-2 sobre sequência de aminoácidos. Mean pooling por proteína. Saída: um único arquivo parquet." },
+      { label: "Expansão", text: "Adicionar Evo (modelo de linguagem de nucleotídeo) e ESM-IF ou Foldseek (embeddings estruturais via AlphaFold). Cada modalidade vira um parquet separado, e o classificador final consome as três." }
+    ]
+  },
+  {
+    id: 6,
+    num: "06",
+    label: "Features de knowledge graph",
+    role: "user",
+    title: "Features de knowledge graph",
+    subtitle: "Contexto biológico extraído de clusters conhecidos",
+    blocks: [{
+      inputs: ["kg.gpickle", "domains.tsv", "neighborhoods.tsv"],
+      processing: ["extract_kg_features.py", "consultas grafo via NetworkX"],
+      outputs: ["kg_features.parquet"]
+    }],
+    description: "Para cada região candidata, o knowledge graph (construído a partir de MiBIG e BGC Atlas) é consultado: quantos clusters conhecidos têm arquitetura de domínios similar? Qual a classe modal entre eles? Há SARP grande na vizinhança? As respostas viram features numéricas que dão contexto biológico ao classificador, complementando o sinal puramente sequência-baseado dos embeddings.",
+    notes: [
+      { label: "MVP", text: "Features tabulares simples: contagens, matches diretos de arquitetura, classes modais." },
+      { label: "Expansão", text: "Embeddings do próprio grafo via GNN (PyTorch Geometric), permitindo capturar relações de vizinhança no KG, não só matches diretos." }
+    ]
+  },
+  {
+    id: 7,
+    num: "07",
+    label: "Treinamento do classificador",
+    role: "user",
+    title: "Treinamento do classificador",
+    subtitle: "Modelo supervisionado para predição de BGCs",
+    blocks: [{
+      inputs: ["embeddings.parquet", "domains.tsv", "kg_features.parquet", "labels.tsv (derivado do MiBIG)"],
+      processing: ["train.py", "agregação por região (pooling + one-hot + KG)", "modelo: LightGBM ou Random Forest", "validação: k-fold cruzada"],
+      outputs: ["model.pkl", "metrics.json", "feature_importance.tsv"]
+    }],
+    description: "As features das três fontes (embeddings, domínios, knowledge graph) são agregadas em uma matriz por região candidata. O classificador é treinado de forma supervisionada usando regiões do MiBIG como exemplos positivos, com validação cruzada para estimar o desempenho real. O modelo treinado é serializado em disco e plugado no pipeline de produção.",
+    notes: [
+      { label: "MVP", text: "Classificador binário: é BGC ou não. LightGBM ou Random Forest. Saída de probabilidade contínua." },
+      { label: "Expansão", text: "Multi-classe (T1PKS, T2PKS, NRPS, terpeno, RiPP, etc.) e ensemble com modelos especializados por modalidade de embedding." }
+    ]
+  },
+  {
+    id: 8,
+    num: "08",
+    label: "Predição",
+    role: "pipeline",
+    title: "Predição em genomas novos",
+    subtitle: "Uso do modelo treinado em produção",
+    blocks: [{
+      inputs: ["model.pkl", "embeddings.parquet", "domains.tsv", "kg_features.parquet"],
+      processing: ["predict.py"],
+      outputs: ["predictions.parquet  ·  region_id, p_bgc, predicted_class"]
+    }],
+    description: "Para um genoma novo, o pipeline executa todas as etapas anteriores (anotação, detecção, vizinhança, domínios, embeddings, features de KG) e usa o modelo treinado para atribuir uma probabilidade de BGC e uma classe predita a cada região candidata.",
+    notes: []
+  },
+  {
+    id: 9,
+    num: "09",
+    label: "Filtragem",
+    role: "pipeline",
+    title: "Filtragem de falsos positivos",
+    subtitle: "Polimento heurístico antes do relatório",
+    blocks: [{
+      inputs: ["predictions.parquet", "domains.tsv"],
+      processing: ["filter.py", "regras heurísticas curadas"],
+      outputs: ["filtered_predictions.parquet"]
+    }],
+    description: "Aplica regras de descarte conhecidas: regiões com apenas proteína ribossomal, escores abaixo de limiar de confiança, vizinhanças com arquitetura não-canônica. O objetivo é evitar que casos triviais cheguem ao relatório e poluam a leitura do usuário final.",
+    notes: []
+  },
+  {
+    id: 10,
+    num: "10",
+    label: "Relatório final",
+    role: "pipeline",
+    title: "Relatório final",
+    subtitle: "Saída visual para o usuário do software",
+    blocks: [{
+      inputs: ["filtered_predictions.parquet", "neighborhoods.tsv", "domains.tsv"],
+      processing: ["generate_report.py", "Jinja2 + visualização de cluster"],
+      outputs: ["report.html"]
+    }],
+    description: "Relatório HTML contendo cada BGC predito, sua arquitetura de domínios, a classe predita, o escore de confiança do modelo, e o link para coordenadas no genoma original. É o produto final que o usuário externo consome.",
+    notes: []
+  },
+  {
+    id: 11,
+    num: "B",
+    label: "Validação contra MiBIG",
+    role: "user",
+    title: "Validação contra MiBIG",
+    subtitle: "Loop de benchmark — paralelo ao pipeline",
+    blocks: [{
+      inputs: ["genomas MiBIG selecionados", "predictions.parquet (rodado sobre eles)", "ground truth MiBIG"],
+      processing: ["evaluate.py", "interseção predições × ground truth", "métricas: precision, recall, F1, AUROC", "comparação opcional com antiSMASH"],
+      outputs: ["benchmark.json", "comparison_report.html"]
+    }],
+    description: "Seleciona genomas com BGCs conhecidos do MiBIG, executa o pipeline completo sobre eles, e mede o quanto foi recuperado em relação ao ground truth. Compara, ainda, com a saída do antiSMASH nos mesmos genomas, fornecendo evidência de melhoria sobre o estado-da-arte. Este é o feedback loop que valida cada mudança no modelo durante o desenvolvimento.",
+    notes: [
+      { label: "Crítico", text: "Sem benchmark, não há como afirmar se uma mudança no classificador é melhoria ou regressão. Vale priorizar essa estrutura antes de gastar tempo otimizando o modelo." }
+    ]
+  }
+];
+
+const tocList = document.getElementById('toc-list');
+const detail = document.getElementById('detail');
+let currentIdx = 0;
+
+function buildToc() {
+  etapas.forEach((e, idx) => {
+    const li = document.createElement('li');
+    li.className = 'toc-item';
+    li.dataset.idx = idx;
+    li.setAttribute('role', 'button');
+    li.setAttribute('tabindex', '0');
+    li.innerHTML = `
+      <span class="toc-num">${e.num}</span>
+      <span class="toc-marker ${e.role}"></span>
+      <span class="toc-label">${e.label}</span>
+    `;
+    li.addEventListener('click', () => render(idx));
+    li.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        render(idx);
+      }
+    });
+    tocList.appendChild(li);
+  });
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function renderFlowGrid(block) {
+  return `
+    <div class="flow-grid">
+      <div class="flow-box input">
+        <p class="flow-box-label">Input</p>
+        <ul class="flow-list">
+          ${block.inputs.map(i => `<li>${escapeHtml(i)}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box process">
+        <p class="flow-box-label">Processamento</p>
+        <ul class="flow-list">
+          ${block.processing.map(p => `<li>${escapeHtml(p)}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box output">
+        <p class="flow-box-label">Output</p>
+        <ul class="flow-list">
+          ${block.outputs.map(o => `<li>${escapeHtml(o)}</li>`).join('')}
+        </ul>
+      </div>
+    </div>
+  `;
+}
+
+const roleLabels = {
+  prereq: "Pré-requisito",
+  pipeline: "Pipeline",
+  user: "Modelagem & IA"
+};
+
+function render(idx) {
+  currentIdx = idx;
+  const e = etapas[idx];
+
+  // Update TOC active state
+  document.querySelectorAll('.toc-item').forEach((li, i) => {
+    li.classList.toggle('active', i === idx);
+  });
+
+  const blocksHtml = e.blocks.length === 1
+    ? renderFlowGrid(e.blocks[0])
+    : e.blocks.map(b => `
+        <div class="subblock">
+          ${b.title ? `<p class="subblock-title">${escapeHtml(b.title)}</p>` : ''}
+          ${renderFlowGrid(b)}
+        </div>
+      `).join('');
+
+  const notesHtml = e.notes.length === 0 ? '' : `
+    <section class="notes">
+      ${e.notes.map(n => `
+        <div class="note">
+          <span class="note-label">${escapeHtml(n.label)}</span>
+          <p class="note-text">${escapeHtml(n.text)}</p>
+        </div>
+      `).join('')}
+    </section>
+  `;
+
+  const prev = idx > 0 ? etapas[idx - 1] : null;
+  const next = idx < etapas.length - 1 ? etapas[idx + 1] : null;
+
+  detail.innerHTML = `
+    <header class="detail-header">
+      <div class="detail-number ${e.role === 'user' ? 'user' : ''}">${e.num}</div>
+      <div class="detail-title-wrap">
+        <span class="detail-tag ${e.role}">${roleLabels[e.role]}</span>
+        <h2 class="detail-title">${escapeHtml(e.title)}</h2>
+        <p class="detail-subtitle">${escapeHtml(e.subtitle)}</p>
+      </div>
+    </header>
+
+    <section class="flow-section">
+      ${blocksHtml}
+    </section>
+
+    <section class="description">
+      ${escapeHtml(e.description)}
+    </section>
+
+    ${notesHtml}
+
+    <nav class="nav-row">
+      <button class="nav-btn prev" ${prev ? '' : 'disabled'} onclick="render(${idx - 1})">
+        <span class="nav-btn-dir">← Anterior</span>
+        ${prev ? `<span class="nav-btn-title">${escapeHtml(prev.title)}</span>` : '<span class="nav-btn-title">—</span>'}
+      </button>
+      <button class="nav-btn next" ${next ? '' : 'disabled'} onclick="render(${idx + 1})">
+        <span class="nav-btn-dir">Próxima →</span>
+        ${next ? `<span class="nav-btn-title">${escapeHtml(next.title)}</span>` : '<span class="nav-btn-title">—</span>'}
+      </button>
+    </nav>
+  `;
+
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft' && currentIdx > 0) render(currentIdx - 1);
+  if (e.key === 'ArrowRight' && currentIdx < etapas.length - 1) render(currentIdx + 1);
+});
+
+buildToc();
+render(0);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S(H)ARP · Pipeline DAG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f5f0;
+  --bg-grid: #ece9e0;
+  --surface: #ffffff;
+  --surface-2: #faf8f3;
+  --ink: #1c1c1f;
+  --ink-2: #4a4a52;
+  --ink-3: #8b8b91;
+  --ink-4: #b8b8be;
+  --border: #ddd9cd;
+  --border-strong: #bcb7a6;
+  --border-stronger: #8a8576;
+
+  --db-fill: #fbf3d8;
+  --db-border: #c9a957;
+  --db-ink: #75571a;
+
+  --file-fill: #ffffff;
+  --file-border: #b5b0a0;
+  --file-ink: #2c2c30;
+
+  --script-fill: #e6edf4;
+  --script-border: #6f8db0;
+  --script-ink: #1f3a5c;
+
+  --user-accent: #b8500e;
+  --user-tint: #fbe8d6;
+  --user-strong: #7c3408;
+
+  --edge: #8b8579;
+  --edge-strong: #1c1c1f;
+
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─────────────── TOPBAR ─────────────── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  background: rgba(247, 245, 240, 0.92);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  z-index: 100;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.brand-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.brand-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+
+.brand-path::before { content: "/ "; color: var(--ink-4); }
+
+.legend {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legend-swatch.db { background: var(--db-fill); border: 1px solid var(--db-border); }
+.legend-swatch.script { background: var(--script-fill); border: 1px solid var(--script-border); }
+.legend-swatch.file { background: var(--file-fill); border: 1px solid var(--file-border); }
+.legend-swatch.user {
+  background: transparent;
+  border: 2px solid var(--user-accent);
+  border-radius: 3px;
+}
+
+/* ─────────────── LAYOUT ─────────────── */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  align-items: start;
+}
+
+/* ─────────────── CANVAS ─────────────── */
+
+.canvas-wrap {
+  background:
+    linear-gradient(0deg, transparent calc(100% - 1px), var(--bg-grid) calc(100% - 1px)) 0 0 / 24px 24px,
+    linear-gradient(90deg, transparent calc(100% - 1px), var(--bg-grid) calc(100% - 1px)) 0 0 / 24px 24px,
+    var(--bg);
+  padding: 32px 20px 80px;
+  overflow-x: auto;
+  border-right: 1px solid var(--border);
+  min-height: calc(100vh - 50px);
+}
+
+.canvas-inner {
+  width: 760px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.canvas-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 4px;
+  padding-left: 4px;
+}
+
+.canvas-subtitle {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 0 0 24px;
+  padding-left: 4px;
+}
+
+svg.dag {
+  display: block;
+  width: 760px;
+  height: auto;
+  user-select: none;
+}
+
+/* SVG NODES */
+
+.node { cursor: pointer; }
+
+.node-rect {
+  stroke-width: 1;
+  transition: filter 0.15s ease, stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+.node[data-type="db"] .node-rect {
+  fill: var(--db-fill);
+  stroke: var(--db-border);
+}
+
+.node[data-type="script"] .node-rect {
+  fill: var(--script-fill);
+  stroke: var(--script-border);
+}
+
+.node[data-type="file"] .node-rect {
+  fill: var(--file-fill);
+  stroke: var(--file-border);
+}
+
+.node[data-user="true"] .node-rect {
+  stroke: var(--user-accent);
+  stroke-width: 1.75;
+}
+
+.node[data-user="true"] .node-ring {
+  fill: none;
+  stroke: var(--user-accent);
+  stroke-width: 0.5;
+  stroke-opacity: 0.55;
+}
+
+.node:hover .node-rect {
+  filter: brightness(0.97);
+}
+
+.node.selected .node-rect {
+  stroke-width: 2.5;
+  stroke: var(--ink);
+}
+
+.node[data-user="true"].selected .node-rect {
+  stroke: var(--user-strong);
+}
+
+.node.dimmed { opacity: 0.32; }
+
+.node-label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  fill: var(--ink);
+  pointer-events: none;
+  letter-spacing: -0.01em;
+}
+
+.node-label-secondary {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  fill: var(--ink-3);
+  pointer-events: none;
+  font-weight: 400;
+}
+
+.node-badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  fill: var(--ink-3);
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.node[data-type="db"] .node-badge { fill: var(--db-ink); }
+.node[data-type="script"] .node-badge { fill: var(--script-ink); }
+.node[data-type="file"] .node-badge { fill: var(--ink-3); }
+.node[data-user="true"] .node-badge { fill: var(--user-strong); }
+
+/* SVG EDGES */
+
+.edge {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.3;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease, stroke-opacity 0.15s ease;
+}
+
+.edge.dashed {
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.7;
+}
+
+.edge.dimmed { stroke-opacity: 0.15; }
+
+.edge.highlighted {
+  stroke: var(--user-accent);
+  stroke-width: 1.8;
+  stroke-opacity: 1;
+}
+
+.edge.highlighted.dashed { stroke-dasharray: 5 4; }
+
+/* SECTION DIVIDERS */
+
+.section-divider {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  fill: var(--ink-4);
+  pointer-events: none;
+}
+
+/* ─────────────── SIDE PANEL ─────────────── */
+
+.side-panel {
+  position: sticky;
+  top: 49px;
+  height: calc(100vh - 49px);
+  overflow-y: auto;
+  background: var(--surface-2);
+  padding: 24px 28px;
+}
+
+.side-panel::-webkit-scrollbar { width: 8px; }
+.side-panel::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.side-panel::-webkit-scrollbar-track { background: transparent; }
+
+.panel-empty {
+  padding: 24px 0;
+}
+
+.panel-empty-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 14px;
+  font-weight: 600;
+}
+
+.panel-empty p {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin: 0 0 12px;
+  line-height: 1.65;
+}
+
+.panel-stats {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.stat-num.accent { color: var(--user-accent); }
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.panel-type-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.panel-type-tag.db { background: var(--db-fill); color: var(--db-ink); border: 1px solid var(--db-border); }
+.panel-type-tag.script { background: var(--script-fill); color: var(--script-ink); border: 1px solid var(--script-border); }
+.panel-type-tag.file { background: var(--file-fill); color: var(--ink-2); border: 1px solid var(--file-border); }
+
+.panel-user-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: var(--user-tint);
+  color: var(--user-strong);
+  border: 1px solid var(--user-accent);
+  margin-left: auto;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.panel-title {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 14px 0 0;
+  word-break: break-word;
+  color: var(--ink);
+}
+
+.panel-subtitle {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+}
+
+.panel-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 22px 0;
+}
+
+.panel-section {
+  margin-bottom: 22px;
+}
+
+.panel-section-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+.panel-text {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.panel-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-file {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ref-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ref-item:hover {
+  border-color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+.ref-marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.ref-marker.db { background: var(--db-fill); border: 1px solid var(--db-border); }
+.ref-marker.script { background: var(--script-fill); border: 1px solid var(--script-border); }
+.ref-marker.file { background: var(--file-fill); border: 1px solid var(--file-border); }
+
+.ref-item[data-user="true"] .ref-marker {
+  box-shadow: 0 0 0 1.5px var(--user-accent);
+}
+
+.ref-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  flex: 1;
+  word-break: break-all;
+}
+
+.ref-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.note-block {
+  background: var(--user-tint);
+  border: 1px solid var(--user-accent);
+  border-left: 3px solid var(--user-accent);
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.note-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--user-strong);
+  margin-bottom: 4px;
+}
+
+.note-text {
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.tool-pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  color: var(--ink-2);
+  margin-right: 4px;
+}
+
+.kbd-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  padding: 14px 0 0;
+  border-top: 1px dashed var(--border);
+  margin-top: 18px;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+  .side-panel { position: static; height: auto; }
+  .canvas-wrap { border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-name">S(H)ARP</span>
+    <span class="brand-path">pipeline DAG</span>
+  </div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch db"></span>database</span>
+    <span class="legend-item"><span class="legend-swatch script"></span>script</span>
+    <span class="legend-item"><span class="legend-swatch file"></span>file</span>
+    <span class="legend-item"><span class="legend-swatch user"></span>modelagem &amp; IA</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <div class="canvas-wrap">
+    <div class="canvas-inner">
+      <p class="canvas-title">DAG · 33 nodes · 40 edges</p>
+      <p class="canvas-subtitle">Clique em qualquer nó para inspecionar. Cada arquivo é um node próprio (não há mais agrupamentos), pra que se possa ver exatamente qual arquivo alimenta cada script. Linhas tracejadas = dependência de banco.</p>
+      <svg class="dag" viewBox="0 0 760 2140" id="dag" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8b8579"/>
+          </marker>
+          <marker id="arr-hl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#b8500e"/>
+          </marker>
+        </defs>
+
+        <g id="sections"></g>
+        <g id="edges-layer"></g>
+        <g id="nodes-layer"></g>
+      </svg>
+    </div>
+  </div>
+
+  <aside class="side-panel" id="panel"></aside>
+
+</div>
+
+<script>
+// ─────────────── DATA ───────────────
+
+const NODES = [
+  // Pre-requisites (databases + pre-built artifacts), top rail
+  { id: 'mibig', type: 'db', x: 70, y: 60, w: 100, h: 44,
+    label: 'MiBIG',
+    badge: 'EXT',
+    description: 'Banco curado de BGCs conhecidos (~2 500 entradas), com anotação manual de cluster, classe biossintética e produto.',
+    detail: 'Download direto de mibig.secondarymetabolites.org. Atualizado periodicamente. É a fonte gold-standard de rótulos positivos para treino e benchmark.' },
+
+  { id: 'bgcatlas', type: 'db', x: 195, y: 60, w: 110, h: 44,
+    label: 'BGC Atlas',
+    badge: 'EXT',
+    description: 'Catálogo amplo de BGCs preditos em metagenomas. Cobertura muito maior que MiBIG, em troca de ruído maior (sem curadoria manual).',
+    detail: 'Usado em conjunto com MiBIG durante a construção do knowledge graph para enriquecer a cobertura de arquiteturas conhecidas.' },
+
+  { id: 'pfam', type: 'db', x: 327, y: 60, w: 130, h: 44,
+    label: 'pfam_models.hmm',
+    badge: 'HMM',
+    description: 'Banco padrão de HMMs do Pfam para identificação de domínios proteicos.',
+    detail: 'Baixado de InterPro / Pfam. Consumido pelo hmmscan na etapa de anotação de domínios.' },
+
+  { id: 'sarp', type: 'db', x: 478, y: 60, w: 130, h: 44,
+    label: 'sarp_models.hmm',
+    badge: 'HMM',
+    description: 'HMMs construídos a partir de SARPs de referência. Detecta arquitetura HTH-BTAD com ou sem domínios acessórios (NB-ARC, TPR, AAA, LuxR).',
+    detail: 'Construído via build_sarp_hmm.py (hmmbuild) durante setup. É o motor da detecção de âncoras na etapa 02a.' },
+
+  { id: 'kg', type: 'db', x: 630, y: 60, w: 100, h: 44,
+    label: 'kg.gpickle',
+    badge: 'GRAPH',
+    description: 'Knowledge graph derivado de MiBIG + BGC Atlas. Nós: clusters, domínios, classes. Arestas: relações conhecidas.',
+    detail: 'Construído via build_kg.py durante setup, usando NetworkX. Consultado em runtime para extrair features de contexto biológico para cada região candidata.' },
+
+  // ─────── INPUT ───────
+  { id: 'genome', type: 'file', x: 380, y: 178, w: 180, h: 44,
+    label: 'genome.fasta',
+    badge: 'INPUT',
+    description: 'Entrada do pipeline: genoma cru de actinomiceto em FASTA. Pode ser de NCBI ou de isolado próprio.',
+    detail: 'Nenhuma anotação pressuposta. O pipeline lida com isso na etapa 01. Consumido pela anotação (s_annotate) e pela busca de motivos em DNA (s_hepta).' },
+
+  // ─────── ANNOTATION ───────
+  { id: 's_annotate', type: 'script', x: 380, y: 268, w: 180, h: 48,
+    label: 'annotate.py',
+    tool: 'Bakta',
+    description: 'Wrapper sobre Bakta. Detecta ORFs, traduz para proteínas, anota função quando há similaridade com bancos.',
+    detail: 'Bakta é mais rápido e específico para procariotos do que Prokka. Produz três outputs: proteínas em FASTA, genoma anotado em GenBank e tabela de genes em GFF.' },
+
+  // Antes era um node f_annot agrupando 3 arquivos. Agora cada arquivo é um node próprio.
+  { id: 'f_proteins', type: 'file', x: 180, y: 378, w: 150, h: 44,
+    label: 'proteins.faa',
+    description: 'FASTA com todas as proteínas preditas no genoma. Uma sequência por ORF anotada.',
+    detail: 'Saída direta do Bakta. IDs consistentes com o GenBank correspondente. Consumido apenas pela detecção de SARP (hmmscan precisa de FASTA puro).' },
+
+  { id: 'f_genbank', type: 'file', x: 380, y: 378, w: 160, h: 44,
+    label: 'annotated.gbk',
+    description: 'Genoma anotado em formato GenBank. Contém sequência, coordenadas de genes e anotação funcional num único arquivo.',
+    detail: 'Formato canônico para passagem de informação entre etapas. Usado pela extração de vizinhança para localizar genes e recortar regiões em torno das âncoras.' },
+
+  { id: 'f_gff', type: 'file', x: 585, y: 378, w: 130, h: 44,
+    label: 'genes.gff',
+    description: 'Coordenadas dos genes em formato GFF3. Tabela: contig, tipo, start, end, strand, attributes.',
+    detail: 'Saída auxiliar do Bakta, útil para inspeção visual em ferramentas como IGV. Não é consumida pelo pipeline atual — mantida para debug e exportação para outras ferramentas.' },
+
+  // ─────── ANCHOR DETECTION ───────
+  { id: 's_sarp', type: 'script', x: 220, y: 488, w: 180, h: 48,
+    label: 'detect_sarp.py',
+    tool: 'hmmscan',
+    description: 'Roda hmmscan das proteínas anotadas contra os modelos de SARP. Anota a posição genômica de cada hit.',
+    detail: 'Identifica SARPs pequenos (HTH-BTAD), médios (+ NB-ARC) e grandes (+ TPR / AAA / LuxR). Cada hit vira uma âncora candidata. Consome proteins.faa.' },
+
+  { id: 's_hepta', type: 'script', x: 540, y: 488, w: 180, h: 48,
+    label: 'detect_heptarepeats.py',
+    tool: 'FIMO (MEME)',
+    description: 'Busca motivos heptaméricos no DNA (afsR-box e similares). Cada match indica uma região regulatória de BGC candidata.',
+    detail: 'Complementa a detecção via SARP. A combinação dos dois sinais (proteína + DNA) aumenta a robustez. Consome o genoma cru, não o anotado.' },
+
+  { id: 'f_anchors', type: 'file', x: 380, y: 594, w: 180, h: 44,
+    label: 'anchors.tsv',
+    description: 'Tabela unificada de âncoras: (contig, start, end, type, score). Type ∈ {SARP, heptarepeat}.',
+    detail: 'É o ponto de partida para definir as regiões candidatas a BGC.' },
+
+  // ─────── NEIGHBORHOOD ───────
+  { id: 's_neigh', type: 'script', x: 380, y: 684, w: 220, h: 48,
+    label: 'extract_neighborhood.py',
+    description: 'Para cada âncora, expande ±20 genes ou ±20 kb (o que for maior). Âncoras próximas são agrupadas em uma região.',
+    detail: 'Consome anchors.tsv (coordenadas) e annotated.gbk (genes + sequências). A política de agrupamento evita contar o mesmo cluster duas vezes quando há múltiplas âncoras dentro dele.' },
+
+  // Antes era um node f_neigh agrupando 3 arquivos.
+  { id: 'f_neighborhoods', type: 'file', x: 180, y: 794, w: 160, h: 44,
+    label: 'neighborhoods.tsv',
+    description: 'Tabela com uma linha por região candidata: region_id, contig, start, end, anchor_ids, n_proteins.',
+    detail: 'Define o escopo de cada candidato. Consumida pelo extrator de features de KG para identificar contextualmente a região.' },
+
+  { id: 'f_neigh_prot', type: 'file', x: 380, y: 794, w: 200, h: 44,
+    label: 'neighborhood_proteins.faa',
+    description: 'FASTA com as proteínas internas de cada região candidata. Cabeçalho inclui region_id.',
+    detail: 'Subset de proteins.faa filtrado pelas coordenadas das regiões. Único input dos dois scripts de caracterização (anotação de domínios + extração de embeddings).' },
+
+  { id: 'f_neigh_dna', type: 'file', x: 585, y: 794, w: 170, h: 44,
+    label: 'neighborhood_dna.fna',
+    description: 'FASTA com o DNA bruto de cada região candidata.',
+    detail: 'Reservado para expansões futuras: um modelo de linguagem nucleotídica (Evo) operaria sobre essas sequências para gerar embeddings complementares. Não consumido no MVP.' },
+
+  // ─────── CHARACTERIZATION (parallel) ───────
+  { id: 's_domains', type: 'script', x: 220, y: 908, w: 200, h: 48,
+    label: 'annotate_domains.py',
+    tool: 'hmmscan',
+    description: 'Anota domínios Pfam em todas as proteínas das regiões candidatas. Saída por (proteína, domínio, e-value, coords).',
+    detail: 'Os domínios viram a base "categórica" das features do classificador. Por exemplo, a arquitetura de domínios de uma região é a base do "match" contra o knowledge graph.' },
+
+  { id: 's_embed', type: 'script', x: 540, y: 908, w: 200, h: 48, user: true,
+    label: 'extract_embeddings.py',
+    tool: 'ESM-2',
+    description: 'Gera embedding por proteína via modelo de linguagem. Mean pooling sobre tokens. Vetor de ~1280 dimensões por proteína.',
+    detail: 'O ponto forte sobre HMMs: captura similaridade funcional mesmo quando a similaridade de sequência é baixa. Atinge proteínas divergentes que HMMs perdem.',
+    mvp: 'ESM-2 sobre aminoácido apenas. Mean pooling. Um único parquet de saída.',
+    expansion: 'Adicionar Evo (modelo de linguagem em nucleotídeo, consumiria neighborhood_dna.fna) e ESM-IF ou Foldseek (embeddings estruturais via AlphaFold). Cada modalidade vira um parquet separado.' },
+
+  { id: 'f_domains', type: 'file', x: 220, y: 1014, w: 200, h: 44,
+    label: 'domains.tsv',
+    description: 'protein_id, region_id, domain, e_value, coords. Consumido por kg_features (matching de arquitetura) e por train.py (one-hot direto).',
+    detail: 'Tipicamente uma proteína tem 0–3 domínios mapeados. Duas vias de consumo: contextual (via KG) e direto (one-hot por região).' },
+
+  { id: 'f_embed', type: 'file', x: 540, y: 1014, w: 220, h: 44, user: true,
+    label: 'embeddings.parquet',
+    description: 'protein_id, region_id, vec[1280]. Embedding ESM-2 por proteína (após mean pooling).',
+    detail: 'Para usar como feature por região, agregar por region_id (média, max, ou concat) na etapa de treino.' },
+
+  // ─────── CONTEXT FEATURES ───────
+  { id: 's_kg_features', type: 'script', x: 380, y: 1126, w: 240, h: 48, user: true,
+    label: 'extract_kg_features.py',
+    description: 'Para cada região, consulta o knowledge graph: quantos clusters MiBIG têm arquitetura de domínios similar? Qual a classe modal? Há SARP grande?',
+    detail: 'Aqui está o seu canal de "contexto biológico" que complementa o sinal sequência-baseado dos embeddings. Consome neighborhoods.tsv (IDs de região) e domains.tsv (arquitetura).',
+    mvp: 'Features tabulares simples: contagens, matches diretos de arquitetura, classes modais entre clusters similares.',
+    expansion: 'Embeddings do próprio grafo via GNN (PyTorch Geometric), capturando relações de vizinhança no KG.' },
+
+  { id: 'f_kg_features', type: 'file', x: 380, y: 1232, w: 220, h: 44, user: true,
+    label: 'kg_features.parquet',
+    description: 'region_id, n_similar_clusters, modal_class, has_large_sarp, ...',
+    detail: 'Já está agregado por region_id, ao contrário dos embeddings e domains (que ainda são por proteína).' },
+
+  // ─────── MODELING ───────
+  { id: 's_train', type: 'script', x: 380, y: 1326, w: 200, h: 48, user: true,
+    label: 'train.py',
+    tool: 'LightGBM',
+    description: 'Agrega features por região (pooling de embeddings + one-hot de domínios + features KG), treina classificador com k-fold cruzada.',
+    detail: 'Três fontes de feature combinadas: embeddings.parquet (proteína→região via pooling), domains.tsv (proteína→região via one-hot), kg_features.parquet (já agregado por região). Rótulos do MiBIG.',
+    mvp: 'Classificador binário (BGC ou não). LightGBM. Saída de probabilidade contínua + métricas de CV.',
+    expansion: 'Multi-classe (T1PKS, T2PKS, NRPS, terpeno, RiPP...); ensemble com modelos especializados por modalidade.' },
+
+  // Antes era um node f_model agrupando 3 arquivos.
+  { id: 'f_modelpkl', type: 'file', x: 180, y: 1432, w: 130, h: 44, user: true,
+    label: 'model.pkl',
+    description: 'Modelo LightGBM serializado em pickle. Inclui hiperparâmetros e estado pós-treino.',
+    detail: 'É o que o pipeline em produção carrega para gerar predições. Versionar por hash de dataset + config é desejável para reproducibilidade.' },
+
+  { id: 'f_metrics', type: 'file', x: 380, y: 1432, w: 150, h: 44, user: true,
+    label: 'metrics.json',
+    description: 'Métricas do treino: AUROC, F1, precision/recall por classe, score por fold da CV.',
+    detail: 'Não é consumida pelo pipeline downstream — fica como artefato de avaliação e documentação do modelo. Útil para tracking durante experimentação.' },
+
+  { id: 'f_featimp', type: 'file', x: 585, y: 1432, w: 200, h: 44, user: true,
+    label: 'feature_importance.tsv',
+    description: 'Importância de cada feature segundo o LightGBM (gain/split). Tabela ordenada.',
+    detail: 'Não consumida pelo pipeline. Útil para análise de erros e priorização de quais features expandir.' },
+
+  // ─────── INFERENCE ───────
+  { id: 's_predict', type: 'script', x: 380, y: 1546, w: 180, h: 48,
+    label: 'predict.py',
+    description: 'Aplica o modelo treinado a novas regiões. Atribui p_bgc e classe predita por region_id.',
+    detail: 'Em produção: o usuário fornece um genoma, o pipeline corre todas as etapas anteriores (que produzem as mesmas features usadas no treino) e este script gera as predições.' },
+
+  { id: 'f_preds', type: 'file', x: 380, y: 1646, w: 220, h: 44,
+    label: 'predictions.parquet',
+    description: 'region_id, p_bgc, predicted_class, top_features.',
+    detail: 'Saída crua do modelo, antes de filtragem heurística.' },
+
+  // ─────── OUTPUT BRANCHES ───────
+  { id: 's_filter', type: 'script', x: 220, y: 1750, w: 180, h: 48,
+    label: 'filter.py',
+    description: 'Regras heurísticas: remove regiões só com proteína ribossomal, escores abaixo de threshold, vizinhanças não-canônicas.',
+    detail: 'É um polimento final, fora do modelo. Útil para reduzir falsos positivos antes do relatório.' },
+
+  { id: 's_evaluate', type: 'script', x: 540, y: 1750, w: 180, h: 48, user: true,
+    label: 'evaluate.py',
+    description: 'Compara predições com MiBIG ground truth. Métricas: precision, recall, F1, AUROC, a nível de cluster e gene.',
+    detail: 'Opcionalmente roda antiSMASH no mesmo conjunto e gera relatório comparativo. É o feedback loop que valida cada mudança no modelo.',
+    mvp: 'Métricas básicas + comparação direta com antiSMASH em subset do MiBIG.',
+    expansion: 'Métricas por classe biossintética; análise de erros (false positives/negatives) com inspeção visual.',
+    note: { label: 'Crítico', text: 'Sem benchmark, não há como afirmar se uma mudança no classificador é melhoria ou regressão. Esta etapa precede a otimização do modelo.' } },
+
+  { id: 'f_filtered', type: 'file', x: 220, y: 1856, w: 220, h: 44,
+    label: 'filtered_predictions.parquet',
+    description: 'Predições após filtragem heurística.',
+    detail: 'Pronto para entrar no relatório final.' },
+
+  // Antes era um node f_bench agrupando 2 arquivos.
+  { id: 'f_bench', type: 'file', x: 510, y: 1856, w: 160, h: 44, user: true,
+    label: 'benchmark.json',
+    description: 'Métricas de validação contra MiBIG: precision, recall, F1, AUROC. Comparação com antiSMASH quando aplicável.',
+    detail: 'Saída numérica do loop de validação. Fica em disco para tracking ao longo do desenvolvimento.' },
+
+  { id: 'f_compreport', type: 'file', x: 695, y: 1856, w: 130, h: 44, user: true,
+    label: 'comparison.html',
+    description: 'Relatório HTML detalhando comparação com antiSMASH: BGCs recuperados, missed, e adicionais detectados pelo S(H)ARP.',
+    detail: 'Artefato para comunicação científica e discussão de erros — não vai para o usuário final do software. Nome real do arquivo: comparison_report.html.' },
+
+  { id: 's_report', type: 'script', x: 220, y: 1970, w: 180, h: 48,
+    label: 'generate_report.py',
+    tool: 'Jinja2',
+    description: 'Gera relatório HTML para o usuário do software com cada BGC predito: arquitetura de domínios, classe, escore, coordenadas.',
+    detail: 'Saída final consumida por quem usa o S(H)ARP em um genoma novo.' },
+
+  { id: 'f_report', type: 'file', x: 220, y: 2076, w: 180, h: 44,
+    label: 'report.html',
+    description: 'Relatório final entregue ao usuário do software.',
+    detail: 'Produto final do pipeline em produção.' },
+];
+
+const EDGES = [
+  // ─ Input → Annotation ─
+  ['genome', 's_annotate'],
+  ['s_annotate', 'f_proteins'],
+  ['s_annotate', 'f_genbank'],
+  ['s_annotate', 'f_gff'],
+
+  // ─ Anchor detection ─
+  ['f_proteins', 's_sarp'],
+  ['genome', 's_hepta'],
+  ['s_sarp', 'f_anchors'],
+  ['s_hepta', 'f_anchors'],
+
+  // ─ Neighborhood ─
+  ['f_genbank', 's_neigh'],     // long: pula por cima da linha de anchors
+  ['f_anchors', 's_neigh'],
+  ['s_neigh', 'f_neighborhoods'],
+  ['s_neigh', 'f_neigh_prot'],
+  ['s_neigh', 'f_neigh_dna'],
+
+  // ─ Characterization ─
+  ['f_neigh_prot', 's_domains'],
+  ['f_neigh_prot', 's_embed'],
+  ['s_domains', 'f_domains'],
+  ['s_embed', 'f_embed'],
+
+  // ─ Context features (KG) ─
+  ['f_neighborhoods', 's_kg_features'],
+  ['f_domains', 's_kg_features'],
+  ['s_kg_features', 'f_kg_features'],
+
+  // ─ Training (3 fontes de feature) ─
+  ['f_embed', 's_train'],
+  ['f_domains', 's_train'],         // novo: train usa one-hot de domínios direto
+  ['f_kg_features', 's_train'],
+  ['s_train', 'f_modelpkl'],
+  ['s_train', 'f_metrics'],
+  ['s_train', 'f_featimp'],
+
+  // ─ Inference ─
+  ['f_modelpkl', 's_predict'],
+  ['s_predict', 'f_preds'],
+
+  // ─ Output branches ─
+  ['f_preds', 's_filter'],
+  ['f_preds', 's_evaluate'],
+  ['s_filter', 'f_filtered'],
+  ['s_evaluate', 'f_bench'],
+  ['s_evaluate', 'f_compreport'],
+
+  // ─ Final report ─
+  ['f_filtered', 's_report'],
+  ['s_report', 'f_report'],
+
+  // ─ DB dependencies (dashed) ─
+  ['sarp', 's_sarp', true],
+  ['pfam', 's_domains', true],
+  ['kg', 's_kg_features', true],
+  ['mibig', 's_train', true],
+  ['mibig', 's_evaluate', true],
+];
+
+const SECTIONS = [
+  { label: 'pre-requisites', y: 30, y2: 130 },
+  { label: '01 · input',  y: 140, y2: 230 },
+  { label: '02 · annotation', y: 240, y2: 450 },
+  { label: '03 · anchor detection', y: 460, y2: 660 },
+  { label: '04 · neighborhood', y: 670, y2: 870 },
+  { label: '05 · characterization', y: 880, y2: 1090 },
+  { label: '06 · context features', y: 1100, y2: 1290 },
+  { label: '07 · modeling', y: 1300, y2: 1510 },
+  { label: '08 · inference', y: 1520, y2: 1720 },
+  { label: '09 · branches', y: 1730, y2: 1930 },
+  { label: '10 · final report', y: 1940, y2: 2120 },
+];
+
+// ─────────────── RENDER ───────────────
+
+const nodeMap = Object.fromEntries(NODES.map(n => [n.id, n]));
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function renderSections() {
+  const layer = document.getElementById('sections');
+  SECTIONS.forEach(s => {
+    el('line', {
+      x1: 0, y1: s.y, x2: 760, y2: s.y,
+      class: 'section-divider'
+    }, layer);
+    el('text', {
+      x: 8, y: s.y - 5,
+      class: 'section-label'
+    }, layer).textContent = s.label;
+  });
+}
+
+function renderNodes() {
+  const layer = document.getElementById('nodes-layer');
+  NODES.forEach(n => {
+    const g = el('g', {
+      class: 'node',
+      'data-id': n.id,
+      'data-type': n.type,
+      'data-user': n.user ? 'true' : 'false',
+      transform: `translate(${n.x}, ${n.y})`
+    }, layer);
+
+    const w = n.w || 180;
+    const h = n.h || 44;
+    const rx = n.type === 'db' ? 6 : (n.type === 'script' ? 3 : 2);
+
+    if (n.user) {
+      el('rect', {
+        class: 'node-ring',
+        x: -w/2 - 4, y: -h/2 - 4,
+        width: w + 8, height: h + 8,
+        rx: rx + 4
+      }, g);
+    }
+
+    el('rect', {
+      class: 'node-rect',
+      x: -w/2, y: -h/2,
+      width: w, height: h,
+      rx: rx
+    }, g);
+
+    // Badge (small label in corner)
+    const badgeText = n.badge || (n.type === 'script' ? 'SCRIPT' : (n.type === 'file' ? 'FILE' : 'DB'));
+    el('text', {
+      class: 'node-badge',
+      x: -w/2 + 8,
+      y: -h/2 + 12
+    }, g).textContent = badgeText;
+
+    // Files (multi-line)
+    if (n.files) {
+      const startY = -h/2 + 24;
+      n.files.forEach((f, i) => {
+        el('text', {
+          class: 'node-label',
+          x: 0, y: startY + i * 14 + 6,
+          'text-anchor': 'middle',
+          'dominant-baseline': 'middle'
+        }, g).textContent = f;
+      });
+    } else {
+      el('text', {
+        class: 'node-label',
+        x: 0, y: 4,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'middle'
+      }, g).textContent = n.label;
+
+      if (n.tool) {
+        el('text', {
+          class: 'node-label-secondary',
+          x: 0, y: 18,
+          'text-anchor': 'middle',
+          'dominant-baseline': 'middle'
+        }, g).textContent = n.tool;
+      }
+    }
+
+    g.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      selectNode(n.id);
+    });
+  });
+}
+
+function edgePath(srcId, tgtId) {
+  const s = nodeMap[srcId];
+  const t = nodeMap[tgtId];
+  const sw = s.w || 180, sh = s.h || 44;
+  const tw = t.w || 180, th = t.h || 44;
+
+  const dx = t.x - s.x;
+  const dy = t.y - s.y;
+
+  // Source/target connection points (s.x, t.x são CENTROS do node)
+  let x1 = s.x;
+  let y1 = s.y + sh/2;  // bottom of source
+  let x2 = t.x;
+  let y2 = t.y - th/2;  // top of target
+
+  // Aresta longa (pula 1+ linha de nodes): rotear por trilha lateral
+  // em vez de cortar nodes pelo meio. Vale tanto para DB quanto
+  // para file → script com descida grande (ex: annotated.gbk → s_neigh).
+  if (dy > 200) {
+    const exitY = y1 + 26;            // 26 abaixo do bottom do source
+    const approachY = y2 - 18;        // 18 acima do top do target
+    const avgX = (s.x + t.x) / 2;
+    const useLeftRail = avgX <= 380;  // rail mais próxima do meio-caminho
+    const railX = useLeftRail ? 14 : 746;
+    return `M ${x1} ${y1} L ${x1} ${exitY} L ${railX} ${exitY} L ${railX} ${approachY} L ${x2} ${approachY} L ${x2} ${y2}`;
+  }
+
+  // Same column (or nearly): straight vertical
+  if (Math.abs(dx) < 4) {
+    return `M ${x1} ${y1} L ${x2} ${y2}`;
+  }
+
+  // Different columns, short distance: smooth bezier
+  const midY = y1 + (y2 - y1) * 0.55;
+  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+}
+
+function renderEdges() {
+  const layer = document.getElementById('edges-layer');
+  EDGES.forEach(([from, to, dashed]) => {
+    const p = el('path', {
+      class: 'edge' + (dashed ? ' dashed' : ''),
+      'data-from': from,
+      'data-to': to,
+      d: edgePath(from, to),
+      'marker-end': 'url(#arr)'
+    }, layer);
+  });
+}
+
+// ─────────────── INTERACTION ───────────────
+
+let selectedId = null;
+
+function selectNode(id) {
+  selectedId = id;
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.toggle('selected', n.dataset.id === id);
+  });
+
+  // Highlight connected edges
+  const incoming = new Set();
+  const outgoing = new Set();
+  const connectedNodes = new Set([id]);
+
+  document.querySelectorAll('.edge').forEach(e => {
+    const from = e.dataset.from;
+    const to = e.dataset.to;
+    e.classList.remove('highlighted', 'dimmed', 'incoming', 'outgoing');
+    if (to === id) {
+      e.classList.add('highlighted', 'incoming');
+      e.setAttribute('marker-end', 'url(#arr-hl)');
+      connectedNodes.add(from);
+      incoming.add(from);
+    } else if (from === id) {
+      e.classList.add('highlighted', 'outgoing');
+      e.setAttribute('marker-end', 'url(#arr-hl)');
+      connectedNodes.add(to);
+      outgoing.add(to);
+    } else {
+      e.classList.add('dimmed');
+      e.setAttribute('marker-end', 'url(#arr)');
+    }
+  });
+
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.toggle('dimmed', !connectedNodes.has(n.dataset.id));
+  });
+
+  renderPanel(id);
+}
+
+function clearSelection() {
+  selectedId = null;
+  document.querySelectorAll('.node').forEach(n => {
+    n.classList.remove('selected', 'dimmed');
+  });
+  document.querySelectorAll('.edge').forEach(e => {
+    e.classList.remove('highlighted', 'dimmed', 'incoming', 'outgoing');
+    e.setAttribute('marker-end', 'url(#arr)');
+  });
+  renderPanel(null);
+}
+
+// ─────────────── PANEL ───────────────
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function findRefs(id) {
+  const incoming = [];
+  const outgoing = [];
+  EDGES.forEach(([from, to, dashed]) => {
+    if (to === id) incoming.push({ id: from, dashed: !!dashed });
+    if (from === id) outgoing.push({ id: to, dashed: !!dashed });
+  });
+  return { incoming, outgoing };
+}
+
+function refItemHtml(ref) {
+  const n = nodeMap[ref.id];
+  if (!n) return '';
+  const label = n.files ? n.files.join(', ') : n.label;
+  const meta = ref.dashed ? 'dep' : (n.type === 'db' ? 'db' : n.type);
+  return `
+    <li class="ref-item" data-jump="${esc(n.id)}" data-user="${n.user ? 'true' : 'false'}">
+      <span class="ref-marker ${n.type}"></span>
+      <span class="ref-name">${esc(label)}</span>
+      <span class="ref-meta">${meta}</span>
+    </li>
+  `;
+}
+
+function renderPanel(id) {
+  const panel = document.getElementById('panel');
+
+  if (!id) {
+    // Empty state
+    const userCount = NODES.filter(n => n.user).length;
+    const scriptCount = NODES.filter(n => n.type === 'script').length;
+    const fileCount = NODES.filter(n => n.type === 'file').length;
+    const dbCount = NODES.filter(n => n.type === 'db').length;
+
+    panel.innerHTML = `
+      <div class="panel-empty">
+        <p class="panel-empty-title">Inspeção do pipeline</p>
+        <p>Cada nó do grafo é um <strong style="font-weight:500">script</strong> que produz um <strong style="font-weight:500">arquivo</strong>. Bancos externos (HMMs, MiBIG, knowledge graph) alimentam scripts específicos via dependências tracejadas.</p>
+        <p>Clique em qualquer nó para ver o que ele faz, o que consome e o que produz. Conexões diretas são realçadas em laranja.</p>
+
+        <div class="panel-stats">
+          <div class="stat-card">
+            <div class="stat-num">${scriptCount}</div>
+            <div class="stat-label">scripts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num">${fileCount}</div>
+            <div class="stat-label">arquivos</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num">${dbCount}</div>
+            <div class="stat-label">bancos</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num accent">${userCount}</div>
+            <div class="stat-label">modelagem &amp; IA</div>
+          </div>
+        </div>
+
+        <p class="kbd-hint">
+          <span class="kbd">esc</span> limpa seleção · <span class="kbd">click</span> em um nó conectado para navegar
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  const n = nodeMap[id];
+  const refs = findRefs(id);
+  const typeLabels = { db: 'database', script: 'script', file: 'file' };
+
+  let html = `
+    <div class="panel-header">
+      <span class="panel-type-tag ${n.type}">${typeLabels[n.type]}</span>
+      ${n.user ? '<span class="panel-user-tag">★ modelagem</span>' : ''}
+    </div>
+    <h2 class="panel-title">${esc(n.label)}</h2>
+    ${n.tool ? `<p class="panel-subtitle">tool: ${esc(n.tool)}</p>` : ''}
+  `;
+
+  // Files (when multi-file group)
+  if (n.files && n.files.length > 1) {
+    html += `
+      <section class="panel-section" style="margin-top:18px">
+        <h3 class="panel-section-title">files</h3>
+        <ul class="panel-files">
+          ${n.files.map(f => `<li class="panel-file">${esc(f)}</li>`).join('')}
+        </ul>
+      </section>
+    `;
+  }
+
+  html += `<hr class="panel-divider">`;
+
+  // Description
+  html += `
+    <section class="panel-section">
+      <h3 class="panel-section-title">what it does</h3>
+      <p class="panel-text">${esc(n.description)}</p>
+    </section>
+  `;
+
+  if (n.detail) {
+    html += `
+      <section class="panel-section">
+        <h3 class="panel-section-title">details</h3>
+        <p class="panel-text">${esc(n.detail)}</p>
+      </section>
+    `;
+  }
+
+  // Inputs / outputs
+  if (refs.incoming.length > 0) {
+    const sectionTitle = n.type === 'script' ? 'inputs' : 'produced by';
+    html += `
+      <section class="panel-section">
+        <h3 class="panel-section-title">${sectionTitle}</h3>
+        <ul class="ref-list">
+          ${refs.incoming.map(refItemHtml).join('')}
+        </ul>
+      </section>
+    `;
+  }
+
+  if (refs.outgoing.length > 0) {
+    const sectionTitle = n.type === 'script' ? 'outputs' : 'consumed by';
+    html += `
+      <section class="panel-section">
+        <h3 class="panel-section-title">${sectionTitle}</h3>
+        <ul class="ref-list">
+          ${refs.outgoing.map(refItemHtml).join('')}
+        </ul>
+      </section>
+    `;
+  }
+
+  // MVP / Expansion / Notes
+  if (n.note) {
+    html += `
+      <div class="note-block">
+        <div class="note-label">${esc(n.note.label)}</div>
+        <p class="note-text">${esc(n.note.text)}</p>
+      </div>
+    `;
+  }
+
+  if (n.mvp || n.expansion) {
+    html += `<section class="panel-section">`;
+    if (n.mvp) {
+      html += `
+        <div class="note-block">
+          <div class="note-label">mvp</div>
+          <p class="note-text">${esc(n.mvp)}</p>
+        </div>
+      `;
+    }
+    if (n.expansion) {
+      html += `
+        <div class="note-block" style="background:var(--surface);border-color:var(--border-strong);border-left-color:var(--ink-3)">
+          <div class="note-label" style="color:var(--ink-2)">expansion</div>
+          <p class="note-text">${esc(n.expansion)}</p>
+        </div>
+      `;
+    }
+    html += `</section>`;
+  }
+
+  panel.innerHTML = html;
+
+  // Bind ref jumps
+  panel.querySelectorAll('.ref-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const targetId = item.dataset.jump;
+      selectNode(targetId);
+      // Scroll target node into view
+      const targetEl = document.querySelector(`.node[data-id="${targetId}"]`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  });
+}
+
+// ─────────────── INIT ───────────────
+
+renderSections();
+renderEdges();
+renderNodes();
+renderPanel(null);
+
+// Click outside any node clears selection
+document.getElementById('dag').addEventListener('click', (ev) => {
+  if (!ev.target.closest('.node')) {
+    clearSelection();
+  }
+});
+
+// ESC clears
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') clearSelection();
+});
+</script>
+
+</body>
+</html>
