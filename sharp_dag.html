@@ -17,6 +17,7 @@
   --ink-2: #4a4a52;
   --ink-3: #8b8b91;
   --ink-4: #b8b8be;
+  --ink-5: #9A651C;
   --border: #ddd9cd;
   --border-strong: #bcb7a6;
   --border-stronger: #8a8576;
@@ -299,11 +300,11 @@ svg.dag {
 
 .section-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  fill: var(--ink-4);
+  fill: var(--ink-5);
   pointer-events: none;
 }
 
@@ -929,11 +930,11 @@ const EDGES = [
 
 const SECTIONS = [
   { label: 'pre-requisites', y: 30, y2: 130 },
-  { label: '01 · input',  y: 140, y2: 230 },
-  { label: '02 · annotation', y: 240, y2: 450 },
-  { label: '03 · anchor detection', y: 460, y2: 660 },
-  { label: '04 · neighborhood', y: 670, y2: 870 },
-  { label: '05 · characterization', y: 880, y2: 1090 },
+  { label: '00 · input',  y: 140, y2: 230 },
+  { label: '01 · annotation', y: 240, y2: 450 },
+  { label: '02 · anchor detection', y: 460, y2: 660 },
+  { label: '03 · neighborhood', y: 670, y2: 870 },
+  { label: '04 & 05 · characterization', y: 880, y2: 1090 },
   { label: '06 · context features', y: 1100, y2: 1290 },
   { label: '07 · modeling', y: 1300, y2: 1510 },
   { label: '08 · inference', y: 1520, y2: 1720 },
