@@ -29,6 +29,7 @@ FASTA header format expected:
 
 Requires Python 3.10+, torch, transformers, pyarrow, numpy.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,8 +53,8 @@ from transformers import AutoModel, AutoTokenizer
 # Short name → (HuggingFace hub id, hidden dimension).
 # Bigger models give richer embeddings but cost more memory / time.
 MODEL_REGISTRY: dict[str, tuple[str, int]] = {
-    "esm2_t6_8M_UR50D":    ("facebook/esm2_t6_8M_UR50D",    320),
-    "esm2_t12_35M_UR50D":  ("facebook/esm2_t12_35M_UR50D",  480),
+    "esm2_t6_8M_UR50D": ("facebook/esm2_t6_8M_UR50D", 320),
+    "esm2_t12_35M_UR50D": ("facebook/esm2_t12_35M_UR50D", 480),
     "esm2_t30_150M_UR50D": ("facebook/esm2_t30_150M_UR50D", 640),
     "esm2_t33_650M_UR50D": ("facebook/esm2_t33_650M_UR50D", 1280),
 }
@@ -65,6 +66,7 @@ LOG = logging.getLogger("extract_embeddings")
 
 
 # ────────────────────────────── config ──────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class Config:
@@ -80,6 +82,7 @@ class Config:
 
 
 # ────────────────────────────── data model ──────────────────────────────────
+
 
 @dataclass(frozen=True)
 class ProteinRecord:
@@ -147,6 +150,7 @@ def generate_mock_records(n: int, seed: int) -> list[ProteinRecord]:
 
 # ────────────────────────────── embedder ────────────────────────────────────
 
+
 class Embedder:
     """Wraps an ESM-2 model. Produces one fixed-dim vector per protein by
     mean-pooling per-residue embeddings, with CLS / EOS / pad tokens masked
@@ -175,17 +179,18 @@ class Embedder:
 
         # Build a residue-only mask. ESM-2's attention_mask covers CLS, residues
         # and EOS; we want only the residues for the protein-level mean.
-        mask = tok.attention_mask.clone()                              # (B, L)
-        mask[:, 0] = 0                                                  # zero CLS
-        last_idx = tok.attention_mask.sum(dim=1) - 1                   # EOS index per row
+        mask = tok.attention_mask.clone()  # (B, L)
+        mask[:, 0] = 0  # zero CLS
+        last_idx = tok.attention_mask.sum(dim=1) - 1  # EOS index per row
         mask[torch.arange(mask.size(0), device=self.device), last_idx] = 0
 
-        m = mask.unsqueeze(-1).to(hidden.dtype)                         # (B, L, 1)
-        pooled = (hidden * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)    # (B, D)
+        m = mask.unsqueeze(-1).to(hidden.dtype)  # (B, L, 1)
+        pooled = (hidden * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)  # (B, D)
         return pooled.float().cpu().numpy()
 
 
 # ────────────────────────────── batching ────────────────────────────────────
+
 
 def length_bucketed_batches(
     records: list[ProteinRecord], batch_size: int
@@ -199,6 +204,7 @@ def length_bucketed_batches(
 
 # ────────────────────────────── writer ──────────────────────────────────────
 
+
 def write_parquet_streaming(
     output_path: Path,
     batches: Iterable[tuple[list[ProteinRecord], np.ndarray]],
@@ -206,26 +212,30 @@ def write_parquet_streaming(
 ) -> int:
     """Write embeddings batch by batch. Uses fixed-size lists for the embedding
     column so downstream tools can lay it out as a 2-D matrix efficiently."""
-    schema = pa.schema([
-        ("protein_id", pa.string()),
-        ("region_id",  pa.string()),
-        ("embedding",  pa.list_(pa.float32(), embedding_dim)),
-    ])
+    schema = pa.schema(
+        [
+            ("protein_id", pa.string()),
+            ("region_id", pa.string()),
+            ("embedding", pa.list_(pa.float32(), embedding_dim)),
+        ]
+    )
 
     n_written = 0
     with pq.ParquetWriter(output_path, schema, compression="zstd") as writer:
         for records, vecs in batches:
-            assert vecs.shape == (len(records), embedding_dim), \
+            assert vecs.shape == (len(records), embedding_dim), (
                 f"unexpected vec shape {vecs.shape}, expected ({len(records)}, {embedding_dim})"
+            )
             # Build the fixed-size-list array from a flat float32 buffer —
             # avoids materializing Python-side nested lists.
-            flat = pa.array(vecs.reshape(-1).astype(np.float32, copy=False),
-                            type=pa.float32())
+            flat = pa.array(
+                vecs.reshape(-1).astype(np.float32, copy=False), type=pa.float32()
+            )
             emb_arr = pa.FixedSizeListArray.from_arrays(flat, embedding_dim)
             table = pa.Table.from_arrays(
                 [
                     pa.array([r.protein_id for r in records], type=pa.string()),
-                    pa.array([r.region_id  for r in records], type=pa.string()),
+                    pa.array([r.region_id for r in records], type=pa.string()),
                     emb_arr,
                 ],
                 schema=schema,
@@ -236,6 +246,7 @@ def write_parquet_streaming(
 
 
 # ────────────────────────────── device ──────────────────────────────────────
+
 
 def select_device(spec: str) -> torch.device:
     if spec != "auto":
@@ -249,6 +260,7 @@ def select_device(spec: str) -> torch.device:
 
 # ────────────────────────────── pipeline ────────────────────────────────────
 
+
 def load_records(cfg: Config) -> list[ProteinRecord]:
     if cfg.mock_n is not None:
         LOG.info("generating %d mock proteins (seed=%d)", cfg.mock_n, cfg.mock_seed)
@@ -259,13 +271,24 @@ def load_records(cfg: Config) -> list[ProteinRecord]:
 
 
 def report_input_stats(records: list[ProteinRecord], max_length: int) -> None:
-    lengths = np.fromiter((r.length for r in records), dtype=np.int32, count=len(records))
-    LOG.info("loaded %d proteins  min=%d  median=%d  max=%d",
-             len(records), lengths.min(), int(np.median(lengths)), lengths.max())
+    lengths = np.fromiter(
+        (r.length for r in records), dtype=np.int32, count=len(records)
+    )
+    LOG.info(
+        "loaded %d proteins  min=%d  median=%d  max=%d",
+        len(records),
+        lengths.min(),
+        int(np.median(lengths)),
+        lengths.max(),
+    )
     n_trunc = int((lengths > max_length).sum())
     if n_trunc:
-        LOG.warning("%d / %d proteins exceed max_length=%d and will be truncated",
-                    n_trunc, len(records), max_length)
+        LOG.warning(
+            "%d / %d proteins exceed max_length=%d and will be truncated",
+            n_trunc,
+            len(records),
+            max_length,
+        )
 
 
 def run(cfg: Config) -> None:
@@ -296,12 +319,18 @@ def run(cfg: Config) -> None:
     # Verify by reading back metadata (cheap; doesn't load the embeddings).
     meta = pq.read_metadata(cfg.output_path)
     size_kb = cfg.output_path.stat().st_size / 1024
-    LOG.info("wrote %d rows × %d cols → %s  (%.1f KB on disk)",
-             meta.num_rows, meta.num_columns, cfg.output_path, size_kb)
+    LOG.info(
+        "wrote %d rows × %d cols → %s  (%.1f KB on disk)",
+        meta.num_rows,
+        meta.num_columns,
+        cfg.output_path,
+        size_kb,
+    )
     assert meta.num_rows == n, f"row mismatch: wrote {n}, parquet has {meta.num_rows}"
 
 
 # ────────────────────────────── cli ─────────────────────────────────────────
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -310,14 +339,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--input", type=Path, help="neighborhood_proteins.faa (FASTA)")
     p.add_argument("--output", type=Path, required=True, help="embeddings.parquet")
-    p.add_argument("--model", default=DEFAULT_MODEL, choices=list(MODEL_REGISTRY),
-                   help=f"ESM-2 variant (default: {DEFAULT_MODEL})")
+    p.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        choices=list(MODEL_REGISTRY),
+        help=f"ESM-2 variant (default: {DEFAULT_MODEL})",
+    )
     p.add_argument("--batch-size", type=int, default=8)
-    p.add_argument("--max-length", type=int, default=1024,
-                   help="truncate proteins longer than this (residues)")
+    p.add_argument(
+        "--max-length",
+        type=int,
+        default=1024,
+        help="truncate proteins longer than this (residues)",
+    )
     p.add_argument("--device", default="auto", help="auto | cpu | cuda | mps")
-    p.add_argument("--mock", type=int, default=None, metavar="N",
-                   help="generate N synthetic proteins instead of reading --input")
+    p.add_argument(
+        "--mock",
+        type=int,
+        default=None,
+        metavar="N",
+        help="generate N synthetic proteins instead of reading --input",
+    )
     p.add_argument("--mock-seed", type=int, default=42)
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -334,17 +376,19 @@ def main(argv: list[str] | None = None) -> None:
     if args.mock is None and args.input is None:
         LOG.error("either --input or --mock N must be provided")
         sys.exit(2)
-    run(Config(
-        input_path=args.input,
-        output_path=args.output,
-        model_name=args.model,
-        batch_size=args.batch_size,
-        max_length=args.max_length,
-        device=args.device,
-        mock_n=args.mock,
-        mock_seed=args.mock_seed,
-        log_every=args.log_every,
-    ))
+    run(
+        Config(
+            input_path=args.input,
+            output_path=args.output,
+            model_name=args.model,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+            device=args.device,
+            mock_n=args.mock,
+            mock_seed=args.mock_seed,
+            log_every=args.log_every,
+        )
+    )
 
 
 if __name__ == "__main__":
