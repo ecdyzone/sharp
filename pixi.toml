@@ -1,0 +1,23 @@
+[workspace]
+authors = ["mumaral <mumaral@protonmail.com>"]
+channels = ["conda-forge", "bioconda", "pytorch"]
+name = "sharp-files"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+export2conda = "pixi workspace export conda-environment > environment.yml"
+
+[dependencies]
+python = "3.11.*"
+bakta = { version = ">=1.12.0,<2", channel = "bioconda" }
+hmmer = { version = ">=3.4,<4", channel = "bioconda" }
+meme = { version = ">=5.5.9,<6", channel = "bioconda" }
+pytorch = { version = ">=2.5.1,<3", channel = "pytorch" }
+numpy = ">=2.4.6,<3"
+pyarrow = ">=20.0.0,<21"
+lightgbm = ">=4.6.0,<5"
+
+[pypi-dependencies]
+transformers = ">=5.9.0, <6"
+fair-esm = ">=2.0.0, <3"
