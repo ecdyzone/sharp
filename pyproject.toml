@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sharp"
+version = "0.1.0"
+description = "S(H)ARP — SARP-anchored BGC discovery in actinomycetes"
+requires-python = ">=3.11"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sharp"]
