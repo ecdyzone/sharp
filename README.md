@@ -37,3 +37,15 @@ Option 2: use `environment.yml`:
 ```bash
 conda env create -f environment.yml
 ```
+
+# Workflow
+
+```bash
+# 1. Generate test data
+pixi run python scripts/generate_mock_data.py --n 100
+
+# 2. Run the step against it
+pixi run python -m sharp.extract_embeddings \
+    --input data/mock/neighborhood_proteins.faa \
+    --output data/interim/embeddings.parquet
+```
