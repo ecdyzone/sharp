@@ -19,5 +19,6 @@ pyarrow = ">=20.0.0,<21"
 lightgbm = ">=4.6.0,<5"
 
 [pypi-dependencies]
+sharp = { path = ".", editable = true }
 transformers = ">=5.9.0, <6"
 fair-esm = ">=2.0.0, <3"
