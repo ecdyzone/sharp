@@ -2,6 +2,10 @@
 .pixi/*
 !.pixi/config.toml
 
+# data folder
+data/*
+!data/README.md
+
 # Raw Data Downloaded by the scripts
 data/raw/
 
