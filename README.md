@@ -49,3 +49,9 @@ pixi run python -m sharp.extract_embeddings \
     --input data/mock/neighborhood_proteins.faa \
     --output data/interim/embeddings.parquet
 ```
+
+Run tests with:
+
+```bash
+pixi run pytest
+```
