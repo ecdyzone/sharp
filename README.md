@@ -101,6 +101,7 @@ pixi run pytest
 ├── pyproject.toml
 ├── README.md
 ├── scripts
+│   ├── generate_mock_benchmark_data.py
 │   └── generate_mock_data.py
 ├── sharp_dag.html
 ├── sharp_pipeline.html
@@ -108,14 +109,18 @@ pixi run pytest
 │   └── sharp
 │       ├── __init__.py
 │       ├── config.py
+│       ├── evaluate.py
 │       ├── extract_embeddings.py
 │       ├── io.py
+│       ├── metrics.py
 │       └── model_management.py
 └── tests
     ├── conftest.py
+    ├── test_evaluate.py
     ├── test_extract_embeddings.py
     ├── test_generate_mock_data.py
     ├── test_io.py
+    ├── test_metrics.py
     └── test_model_management.py
 ```
 
