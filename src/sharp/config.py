@@ -1,7 +1,7 @@
 """Project paths and per-step configuration dataclasses.
 
 Paths follow the Cookiecutter Data Science convention:
-  raw/       — immutable external inputs (genomes from NCBI, etc.)
+  raw/       — immutable external inputs (genomes from NCBI, MiBIG dumps)
   interim/   — intermediate pipeline artifacts (between steps)
   processed/ — final consumer-facing outputs (reports, trained models)
   mock/      — synthetic data for testing
@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-# This file lives at src/sharp/config.py — project root is two levels up from src/.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DATA_DIR = PROJECT_ROOT / "data"
@@ -32,3 +31,12 @@ class EmbeddingConfig:
     max_length: int = 1024
     device: str = "auto"
     log_every: int = 50
+
+
+@dataclass(frozen=True)
+class EvaluateConfig:
+    """Configuration for the benchmark / evaluation step."""
+    predictions_path: Path
+    ground_truth_path: Path
+    output_path: Path
+    min_overlap_frac: float = 0.5

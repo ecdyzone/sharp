@@ -1,24 +1,31 @@
 """I/O for the pipeline.
 
-Owns the `ProteinRecord` data type that flows between steps, and the
-FASTA / parquet read+write functions. Everything that touches disk for
-the embedding step routes through here.
+Owns the data types that flow between steps (`ProteinRecord`,
+`PredictedRegion`, `KnownCluster`) and the read/write functions for the
+file formats produced and consumed by the pipeline.
 """
 from __future__ import annotations
 
+import csv
+import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+if TYPE_CHECKING:
+    from sharp.metrics import BenchmarkResult
+
 LOG = logging.getLogger(__name__)
 REGION_ID_RE = re.compile(r"region_id=([^\s]+)")
 
+
+# ────────────────────────────── data types ─────────────────────────────────
 
 @dataclass(frozen=True)
 class ProteinRecord:
@@ -30,6 +37,29 @@ class ProteinRecord:
     @property
     def length(self) -> int:
         return len(self.sequence)
+
+
+@dataclass(frozen=True)
+class PredictedRegion:
+    """A region the pipeline predicted as a candidate BGC, with the model's
+    probability score. Coordinates are half-open: [start, end)."""
+    region_id: str
+    contig: str
+    start: int
+    end: int
+    p_bgc: float
+    predicted_class: str | None = None
+
+
+@dataclass(frozen=True)
+class KnownCluster:
+    """A known BGC from a ground-truth source (e.g. MiBIG). Coordinates are
+    half-open: [start, end)."""
+    cluster_id: str
+    contig: str
+    start: int
+    end: int
+    cluster_class: str | None = None
 
 
 # ────────────────────────────── FASTA ──────────────────────────────────────
@@ -90,21 +120,14 @@ def write_fasta(
     return n
 
 
-# ────────────────────────────── parquet ────────────────────────────────────
+# ────────────────────────────── parquet (embeddings) ───────────────────────
 
 def write_embeddings_parquet(
     output_path: Path,
     batches: Iterable[tuple[list[ProteinRecord], np.ndarray]],
     embedding_dim: int,
 ) -> int:
-    """Stream embeddings into a parquet file batch by batch.
-
-    Uses a fixed-size list type for the embedding column so downstream tools
-    can lay it out as a 2-D matrix efficiently. Holds one batch in memory
-    at a time — constant memory regardless of input size.
-
-    Returns the total number of rows written.
-    """
+    """Stream embeddings into a parquet file batch by batch."""
     schema = pa.schema([
         ("protein_id", pa.string()),
         ("region_id",  pa.string()),
@@ -119,8 +142,6 @@ def write_embeddings_parquet(
                 f"unexpected vec shape {vecs.shape}, "
                 f"expected ({len(records)}, {embedding_dim})"
             )
-            # Build the fixed-size-list array from a flat float32 buffer —
-            # avoids materializing Python-side nested lists.
             flat = pa.array(
                 vecs.reshape(-1).astype(np.float32, copy=False),
                 type=pa.float32(),
@@ -137,3 +158,105 @@ def write_embeddings_parquet(
             writer.write_table(table)
             n_written += len(records)
     return n_written
+
+
+# ────────────────────────────── parquet (predictions) ──────────────────────
+
+PREDICTIONS_SCHEMA = pa.schema([
+    ("region_id",       pa.string()),
+    ("contig",          pa.string()),
+    ("start",           pa.int64()),
+    ("end",             pa.int64()),
+    ("p_bgc",           pa.float32()),
+    ("predicted_class", pa.string()),   # nullable
+])
+
+
+def load_predictions_parquet(path: Path) -> list[PredictedRegion]:
+    """Read a predictions.parquet file into PredictedRegion objects."""
+    table = pq.read_table(path)
+    cols = {name: table.column(name).to_pylist() for name in table.column_names}
+    n = table.num_rows
+    classes = cols.get("predicted_class", [None] * n)
+    return [
+        PredictedRegion(
+            region_id=cols["region_id"][i],
+            contig=cols["contig"][i],
+            start=int(cols["start"][i]),
+            end=int(cols["end"][i]),
+            p_bgc=float(cols["p_bgc"][i]),
+            predicted_class=classes[i],
+        )
+        for i in range(n)
+    ]
+
+
+def write_predictions_parquet(
+    path: Path, predictions: list[PredictedRegion]
+) -> int:
+    """Write PredictedRegion objects to parquet. Used by mock data generation
+    and (eventually) by predict.py."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pydict(
+        {
+            "region_id":       [p.region_id for p in predictions],
+            "contig":          [p.contig for p in predictions],
+            "start":           [p.start for p in predictions],
+            "end":             [p.end for p in predictions],
+            "p_bgc":           [p.p_bgc for p in predictions],
+            "predicted_class": [p.predicted_class for p in predictions],
+        },
+        schema=PREDICTIONS_SCHEMA,
+    )
+    pq.write_table(table, path, compression="zstd")
+    return len(predictions)
+
+
+# ────────────────────────────── TSV (ground truth) ─────────────────────────
+
+GROUND_TRUTH_COLUMNS = ["cluster_id", "contig", "start", "end", "class"]
+
+
+def load_ground_truth_tsv(path: Path) -> list[KnownCluster]:
+    """Read a ground truth TSV. Required columns: cluster_id, contig, start,
+    end. Optional: class. Extra columns are ignored."""
+    out: list[KnownCluster] = []
+    with path.open() as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        missing = {"cluster_id", "contig", "start", "end"} - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"ground truth TSV missing columns: {sorted(missing)}")
+        for row in reader:
+            out.append(KnownCluster(
+                cluster_id=row["cluster_id"],
+                contig=row["contig"],
+                start=int(row["start"]),
+                end=int(row["end"]),
+                cluster_class=row.get("class") or None,
+            ))
+    return out
+
+
+def write_ground_truth_tsv(path: Path, clusters: list[KnownCluster]) -> int:
+    """Write KnownCluster objects to TSV. Used by mock data generation."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=GROUND_TRUTH_COLUMNS, delimiter="\t")
+        writer.writeheader()
+        for c in clusters:
+            writer.writerow({
+                "cluster_id": c.cluster_id,
+                "contig":     c.contig,
+                "start":      c.start,
+                "end":        c.end,
+                "class":      c.cluster_class or "",
+            })
+    return len(clusters)
+
+
+# ────────────────────────────── JSON (benchmark) ───────────────────────────
+
+def write_benchmark_json(path: Path, result: "BenchmarkResult") -> None:
+    """Serialize a BenchmarkResult to JSON. Stable, human-readable layout."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(asdict(result), indent=2, sort_keys=False) + "\n")

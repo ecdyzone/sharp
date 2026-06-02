@@ -49,6 +49,8 @@ conda env create -f environment.yml
 > - `conda activate <environment-name>`
 > - run the commands below without `pixi run`
 
+## Extract Embeddings
+
 ```bash
 ## 1. Generate test data
 pixi run python scripts/generate_mock_data.py --n 100
@@ -58,6 +60,24 @@ pixi run python -m sharp.extract_embeddings \
     --input data/mock/neighborhood_proteins.faa \
     --output data/interim/embeddings.parquet
 ```
+
+## Benchmarks
+
+```bash
+# 1. Generate correlated mock data — clusters and predictions that overlap by construction
+pixi run python scripts/generate_mock_benchmark_data.py \
+    --n-clusters 20 --recall-rate 0.7 --n-false-positives 5
+
+# 2. Evaluate
+pixi run python -m sharp.evaluate \
+    --predictions data/mock/predictions.parquet \
+    --ground-truth data/mock/ground_truth.tsv \
+    --output data/processed/benchmark.json
+
+# Output: precision=0.737, recall=0.700, F1=0.718 — matches the generator's prediction
+```
+
+## Tests
 
 Run tests with:
 
