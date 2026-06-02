@@ -10,3 +10,13 @@ requires-python = ">=3.11"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sharp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    "error",
+    # huggingface_hub emits these on import in some envs; not actionable for us.
+    "ignore::DeprecationWarning:huggingface_hub.*",
+    "ignore::FutureWarning:transformers.*",
+]

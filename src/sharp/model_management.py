@@ -76,15 +76,39 @@ def ensure_model_available(
     return hub_id
 
 
+# ────────────────────────────── pooling ────────────────────────────────────
+
+def residue_mean_pool(
+    hidden: torch.Tensor, attention_mask: torch.Tensor
+) -> torch.Tensor:
+    """Mean-pool over residue tokens, excluding CLS, EOS, and pad.
+
+    ESM-2 tokenizes each sequence as `[CLS] residues... [EOS]` then pads.
+    The attention mask is 1 for all three categories; for a per-protein
+    summary vector we want only the residues. This matters: on a 50-aa
+    protein, naïvely pooling with the attention mask includes 2/52 ≈ 4%
+    non-residue noise.
+
+    Args:
+        hidden:         (B, L, D) — last hidden states from the model.
+        attention_mask: (B, L)    — 1 for CLS+residues+EOS, 0 for pad.
+
+    Returns:
+        (B, D) — one mean-pooled vector per sequence in the batch.
+    """
+    mask = attention_mask.clone()
+    mask[:, 0] = 0                                     # zero CLS
+    last_idx = attention_mask.sum(dim=1) - 1           # EOS index per row
+    mask[torch.arange(mask.size(0), device=mask.device), last_idx] = 0
+
+    m = mask.unsqueeze(-1).to(hidden.dtype)            # (B, L, 1)
+    return (hidden * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)
+
+
 # ────────────────────────────── embedder ───────────────────────────────────
 
 class Embedder:
-    """ESM-2 wrapper: tokenize → forward → mean-pool over residues.
-
-    Masks CLS, EOS, and pad tokens so each protein vector reflects only
-    residue positions. This matters: for a 50-aa protein, naïvely pooling
-    with the attention mask includes ~4% noise from CLS+EOS.
-    """
+    """ESM-2 wrapper: tokenize → forward → mean-pool over residues."""
 
     def __init__(self, model_name: str, device: torch.device, max_length: int):
         hub_id, self.dim = MODEL_REGISTRY[model_name]
@@ -103,16 +127,6 @@ class Embedder:
             max_length=self.max_length,
             return_tensors="pt",
         ).to(self.device)
-
-        # (B, L, D) — last hidden state for every token position
-        hidden = self.model(**tok).last_hidden_state
-
-        # Residue-only mask: zero CLS (position 0) and EOS (last non-pad position).
-        mask = tok.attention_mask.clone()
-        mask[:, 0] = 0
-        last_idx = tok.attention_mask.sum(dim=1) - 1
-        mask[torch.arange(mask.size(0), device=self.device), last_idx] = 0
-
-        m = mask.unsqueeze(-1).to(hidden.dtype)
-        pooled = (hidden * m).sum(dim=1) / m.sum(dim=1).clamp(min=1)
+        hidden = self.model(**tok).last_hidden_state             # (B, L, D)
+        pooled = residue_mean_pool(hidden, tok.attention_mask)   # (B, D)
         return pooled.float().cpu().numpy()
