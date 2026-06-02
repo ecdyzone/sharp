@@ -55,3 +55,47 @@ Run tests with:
 ```bash
 pixi run pytest
 ```
+
+# Directory Structure
+
+```bash
+.
+├── benchmarks
+├── config
+├── data
+├── environment.yml
+├── LICENSE
+├── notebooks
+│   └── inspecting_parquet.py
+├── pixi.lock
+├── pixi.toml
+├── pyproject.toml
+├── README.md
+├── scripts
+│   └── generate_mock_data.py
+├── sharp_dag.html
+├── sharp_pipeline.html
+├── src
+│   └── sharp
+│       ├── __init__.py
+│       ├── config.py
+│       ├── extract_embeddings.py
+│       ├── io.py
+│       └── model_management.py
+└── tests
+    ├── conftest.py
+    ├── test_extract_embeddings.py
+    ├── test_generate_mock_data.py
+    ├── test_io.py
+    └── test_model_management.py
+```
+
+# Currently Working on
+
+NOW
+
+- prototyping embeddings with tests
+
+NEXT
+
+- prototyping benchmarks
