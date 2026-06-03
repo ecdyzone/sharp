@@ -49,7 +49,7 @@ conda env create -f environment.yml
 > - `conda activate <environment-name>`
 > - run the commands below without `pixi run`
 
-## Extract Embeddings
+### Extract Embeddings
 
 ```bash
 ## 1. Generate test data
@@ -61,7 +61,7 @@ pixi run python -m sharp.extract_embeddings \
     --output data/interim/embeddings.parquet
 ```
 
-## Benchmarks
+### Benchmarks
 
 ```bash
 # 1. Generate correlated mock data — clusters and predictions that overlap by construction
