@@ -9,7 +9,7 @@ Clique nos links abaixo para ir às páginas HTML interativas:
 - [Diagrama DAG (directed acyclic graph)](docs/sharp_dag.html) - Fluxograma do projeto, evidenciando inputs-processos-outputs.
 - [Página Descritiva](docs/sharp_pipeline.html) - Praticamente o mesmo conteúdo do Diagrama DAG, mas apresentado com uma interface menos técnica.
 
-# Setting up
+## Setting up
 
 First run:
 
@@ -20,7 +20,7 @@ cd <repo>
 
 then install with `pixi` or `conda`
 
-## using pixi
+### Using pixi (recommended)
 
 Just run:
 
@@ -28,7 +28,7 @@ Just run:
 pixi install
 ```
 
-## using conda
+### Using conda
 
 Option 1: use `pixi.lock`
 
@@ -42,13 +42,18 @@ Option 2: use `environment.yml`:
 conda env create -f environment.yml
 ```
 
-# Workflow
+## Workflow
+
+> For reproducing with conda/mamba you have to:
+>
+> - `conda activate <environment-name>`
+> - run the commands below without `pixi run`
 
 ```bash
-# 1. Generate test data
+## 1. Generate test data
 pixi run python scripts/generate_mock_data.py --n 100
 
-# 2. Run the step against it
+## 2. Run the step against it
 pixi run python -m sharp.extract_embeddings \
     --input data/mock/neighborhood_proteins.faa \
     --output data/interim/embeddings.parquet
@@ -60,7 +65,7 @@ Run tests with:
 pixi run pytest
 ```
 
-# Directory Structure
+## Directory Structure
 
 ```bash
 .
@@ -94,7 +99,7 @@ pixi run pytest
     └── test_model_management.py
 ```
 
-# Currently Working on
+## Currently Working on
 
 NOW
 
