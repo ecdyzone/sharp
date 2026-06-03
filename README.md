@@ -1,5 +1,8 @@
 # Projeto
 
+> Link GitHub Pages: <https://ecdyzone.github.io/sharp>
+> Repositório GitHub: <https://github.com/ecdyzone/sharp>
+
 Clique nos links abaixo para ir às páginas HTML interativas:
 
 - [Diagrama DAG (directed acyclic graph)](docs/sharp_dag.html) - Fluxograma do projeto, evidenciando inputs-processos-outputs.
