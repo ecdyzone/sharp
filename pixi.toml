@@ -1,7 +1,7 @@
 [workspace]
 authors = ["mumaral <mumaral@protonmail.com>"]
 channels = ["conda-forge", "bioconda", "pytorch"]
-name = "sharp-files"
+name = "sharp"
 platforms = ["linux-64"]
 version = "0.1.0"
 
