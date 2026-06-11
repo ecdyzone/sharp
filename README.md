@@ -77,6 +77,21 @@ pixi run python -m sharp.evaluate \
 # Output: precision=0.737, recall=0.700, F1=0.718 — matches the generator's prediction
 ```
 
+### Preparing MiBiG Database
+
+```bash
+# All clusters
+pixi run python scripts/prepare_mibig_ground_truth.py \
+    --input-dir data/raw/mibig_json_4.0 \
+    --output data/raw/mibig_ground_truth.tsv
+
+# Or focused on your organism of interest
+pixi run python scripts/prepare_mibig_ground_truth.py \
+    --input-dir data/raw/mibig_json_4.0 \
+    --output data/raw/streptomyces_ground_truth.tsv \
+    --genus Streptomyces
+```
+
 ## Tests
 
 Run tests with:
