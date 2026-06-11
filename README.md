@@ -107,6 +107,9 @@ pixi run pytest
 ├── benchmarks
 ├── config
 ├── data
+├── docs
+│   ├── sharp_dag.html
+│   └── sharp_pipeline.html
 ├── environment.yml
 ├── LICENSE
 ├── notebooks
@@ -116,10 +119,10 @@ pixi run pytest
 ├── pyproject.toml
 ├── README.md
 ├── scripts
+│   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
-│   └── generate_mock_data.py
-├── sharp_dag.html
-├── sharp_pipeline.html
+│   ├── generate_mock_data.py
+│   └── prepare_mibig_ground_truth.py
 ├── src
 │   └── sharp
 │       ├── __init__.py
@@ -136,15 +139,10 @@ pixi run pytest
     ├── test_generate_mock_data.py
     ├── test_io.py
     ├── test_metrics.py
-    └── test_model_management.py
+    ├── test_model_management.py
+    └── test_prepare_mibig.py
 ```
 
 ## Currently Working on
-
-NOW
-
-- prototyping embeddings with tests
-
-NEXT
 
 - prototyping benchmarks
