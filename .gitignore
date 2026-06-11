@@ -8,6 +8,9 @@
 #
 # # Raw Data Downloaded by the scripts
 # data/raw/
+#
+# DVC
+.dvc/fake-storage/
 
 # Nextflow
 .nextflow*
