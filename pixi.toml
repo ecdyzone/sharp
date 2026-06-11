@@ -19,9 +19,13 @@ pyarrow = ">=20.0.0,<21"
 lightgbm = ">=4.6.0,<5"
 ipython = ">=9.14.1,<10"
 pytest = ">=9.0.3,<10"
+openssl = ">=3.6.3,<4"
+ca-certificates = ">=2026.5.20,<2027"
+certifi = ">=2026.5.20,<2027"
 
 [pypi-dependencies]
 sharp = { path = ".", editable = true }
 transformers = ">=5.9.0, <6"
 fair-esm = ">=2.0.0, <3"
 pytest = ">=9.0.3, <10"
+dvc = ">=3.67.1, <4"
