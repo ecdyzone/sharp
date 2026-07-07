@@ -251,5 +251,12 @@ Conversion scripts (not yet written, Tier 0 priority):
 BGC Atlas note: computationally predicted, no manual curation. Benchmark numbers
 against it are systematically optimistic. Always report alongside MiBIG numbers.
 
+MiBIG 4.0 coverage note: ~53% of *Streptomyces* MiBIG entries have unknown locus
+coordinates (`location: {from: 0, to: 0}`) and are correctly dropped by
+`prepare_mibig_ground_truth.py`. The *Streptomyces* ground truth is ~430 loci, not
+~900. Recall is therefore "recall over coordinate-resolved MiBIG." Affects all
+tools equally (fair comparison) but caps absolute recall. See `CLAUDE.md` →
+"Ground truth sources" for the full caveat.
+
 See `docs/ARCHITECTURE.md#metrics` for the methodological choices (match definition,
 recovery semantics, threshold recording).

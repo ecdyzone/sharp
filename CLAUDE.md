@@ -247,6 +247,22 @@ BGC Atlas results should be reported with a caveat in any paper/presentation:
 benchmark numbers on BGC Atlas are optimistic by nature (the positive labels are
 themselves predictions, so agreement with them doesn't prove correctness).
 
+**MiBIG 4.0 coordinate-coverage caveat (verified 2026-07-07).** ~45% of all MiBIG
+4.0 entries — and **478 of 905 (53%) of *Streptomyces* entries** — store their
+locus as `location: {from: 0, to: 0}`, i.e. the compound is characterized but the
+genomic coordinates are unknown. `prepare_mibig_ground_truth.py` correctly drops
+these (a coordinate-based benchmark can't score a cluster with no interval; the
+drop count is logged as "N entries had no locus with usable coordinates"). The
+resulting *Streptomyces* ground truth is **~430 loci from 427 clusters, not ~900**.
+Two consequences to report in any paper/presentation:
+- The recall **denominator is ~half** of MiBIG's *Streptomyces* content by design.
+- The dropped half is **not random** — it skews toward older, compound-first
+  submissions (dropped IDs cluster in the low `BGC00000xx` range), so the benchmark
+  over-represents well-characterized PKS/NRPS clusters. This affects *every* tool
+  (S(H)ARP, antiSMASH, DeepBGC) equally, so it doesn't bias the *comparison* — but
+  it does mean absolute recall numbers are "recall over coordinate-resolved MiBIG,"
+  not "recall over all known *Streptomyces* BGCs."
+
 ### Baseline conversion scripts (not yet written)
 
 **`scripts/prepare_bgcatlas_ground_truth.py`**

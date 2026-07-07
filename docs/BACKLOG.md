@@ -6,11 +6,13 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
 
 ## Tier 0 — benchmark priority (team directive: benchmarks first)
 
-- [ ] **Verify MiBIG 4.0 JSON schema**
-  Run `python scripts/prepare_mibig_ground_truth.py --inspect data/raw/mibig_json_4.0`.
-  Confirm `cluster_id`, `classes`, `taxonomy_name`, and `locus coords` all resolve correctly.
-  If any are `None`, edit the `FIELD PATHS` section in `prepare_mibig_ground_truth.py`.
-  **Must be done before any real benchmark numbers are trusted.**
+- [x] **Verify MiBIG 4.0 JSON schema** ✅ 2026-07-07
+  Ran `--inspect`: `cluster_id`, `classes`, `taxonomy_name`, and locus coords all
+  resolve. 1-based→0-based conversion confirmed (e.g. BGC0000002 `from:7362971` →
+  `start:7362970`). **Finding:** ~53% of *Streptomyces* entries have `location:
+  {from:0,to:0}` (unknown coords) and are correctly dropped → GT is ~430 loci from
+  427 clusters, not ~900. Documented as a benchmark caveat in `CLAUDE.md` and
+  `PIPELINE.md`. No code change needed; the drop is already logged by the script.
 
 - [ ] **`scripts/run_antismash_baseline.py`**
   Run antiSMASH on a genome → parse JSON summary → `data/interim/antismash_predictions.parquet`.
