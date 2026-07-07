@@ -113,6 +113,10 @@ Package is installed editable: `import sharp.io` works anywhere.
 
 **Each pipeline step = one module** with a `run(cfg: StepConfig) -> None` function and a `build_parser() -> argparse.ArgumentParser` function. Entry point: `python -m sharp.<step>`.
 
+**When you add a new file (script or module), do these two things in the same change:**
+1. **Update the directory-structure tree** in `README.md` (`## Directory Structure`) so it stays accurate.
+2. **Document its usage** in both `README.md` (a runnable command block, like the "Preparing MiBiG / BGC Atlas Database" sections) and `CLAUDE.md`. The single source of truth is the file's own module docstring — mirror its `Usage:` block; don't invent new invocations. Keep the three (docstring, README, CLAUDE.md) in sync.
+
 **Side-effect isolation:** `metrics.py` is pure (no I/O, no logging). `io.py` owns disk. Orchestration modules (`evaluate.py`, `extract_embeddings.py`, etc.) call both and log.
 
 **Streaming writes for large files.** Parquet is written batch-by-batch via `pq.ParquetWriter` context manager. Never accumulate all rows in memory.
@@ -385,6 +389,14 @@ pixi run python scripts/prepare_mibig_ground_truth.py \
     --input-dir data/raw/mibig_json_4.0 \
     --output data/raw/mibig_ground_truth.tsv \
     --genus Streptomyces
+
+# BGC Atlas secondary ground truth (noisy — report alongside MiBIG, never alone)
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --inspect data/raw/complete-bgcs          # verify schema first
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --input-dir data/raw/complete-bgcs \
+    --output data/raw/bgcatlas_ground_truth.tsv
+#   add --limit N to build against a small subset for dev/tests
 
 # Full competitor comparison (once baseline scripts are written)
 # See "Benchmark comparison" section above for full command sequence

@@ -92,6 +92,28 @@ pixi run python scripts/prepare_mibig_ground_truth.py \
     --genus Streptomyces
 ```
 
+### Preparing BGC Atlas Database
+
+Secondary, noisy ground truth (labels are themselves antiSMASH predictions —
+report alongside MiBiG, never alone). The dump is 204k antiSMASH `.gbk` files
+downloaded by `scripts/download_bgc-atlas.sh` (DVC-managed).
+
+```bash
+# Inspect a few real files first (verify the schema on disk)
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --inspect data/raw/complete-bgcs
+
+# Build the TSV (streams over all ~204k files)
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --input-dir data/raw/complete-bgcs \
+    --output data/raw/bgcatlas_ground_truth.tsv
+
+# Develop / test against a small subset without walking 10 GB
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --input-dir data/raw/complete-bgcs \
+    --output data/interim/bgcatlas_sample.tsv --limit 100
+```
+
 ## Tests
 
 Run tests with:
@@ -119,9 +141,11 @@ pixi run pytest
 ├── pyproject.toml
 ├── README.md
 ├── scripts
+│   ├── download_bgc-atlas.sh
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
 │   ├── generate_mock_data.py
+│   ├── prepare_bgcatlas_ground_truth.py
 │   └── prepare_mibig_ground_truth.py
 ├── src
 │   └── sharp
@@ -140,6 +164,7 @@ pixi run pytest
     ├── test_io.py
     ├── test_metrics.py
     ├── test_model_management.py
+    ├── test_prepare_bgcatlas.py
     └── test_prepare_mibig.py
 ```
 
