@@ -163,6 +163,8 @@ have corresponding `sharp/` modules.
 |---|---|---|
 | `download_mibig.sh` | ✅ written | `data/raw/mibig_json_4.0/`, `mibig_gbk_4.0/`, `mibig_prot_seqs_4.0.fasta` |
 | `prepare_mibig_ground_truth.py` | ✅ written | `data/raw/mibig_ground_truth.tsv` |
+| `download_bgc-atlas.sh` | ✅ written | `data/raw/complete-bgcs/` (204k antiSMASH `.gbk`) |
+| `prepare_bgcatlas_ground_truth.py` | ✅ written | `data/raw/bgcatlas_ground_truth.tsv` (secondary/noisy GT) |
 | `build_sarp_hmm.py` | 🔲 not written | `data/raw/sarp_models.hmm` |
 | `build_kg.py` | 🔲 not written | `data/raw/kg.gpickle` |
 

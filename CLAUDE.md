@@ -265,10 +265,21 @@ Two consequences to report in any paper/presentation:
 
 ### Baseline conversion scripts (not yet written)
 
-**`scripts/prepare_bgcatlas_ground_truth.py`**
-Similar to `prepare_mibig_ground_truth.py`. BGC Atlas distributes as TSV or GFF.
-Inspect the actual format before writing the parser. Output: `data/raw/bgcatlas_ground_truth.tsv`
-(same schema as `mibig_ground_truth.tsv`).
+**`scripts/prepare_bgcatlas_ground_truth.py`** ✅ done (2026-07-07)
+Parses the BGC Atlas `complete-bgcs` dump — 204,661 antiSMASH-produced `.gbk`
+files, one region per file (downloaded by `scripts/download_bgc-atlas.sh`, DVC-managed
+under `data/raw/complete-bgcs/`). Output: `data/raw/bgcatlas_ground_truth.tsv`
+(same schema as `mibig_ground_truth.tsv`). Verified schema facts:
+- Genomic coords are the antiSMASH `Orig. start`/`Orig. end` structured-comment
+  fields (NOT the region-local LOCUS coords), and are **already 0-based half-open**
+  (`end - start == len(seq)` across thousands of files) — so, unlike MiBIG, **no
+  coordinate conversion is applied**.
+- `cluster_id` = filename stem (unique; includes `.regionNNN`, so region001 and
+  region002 on one contig stay distinct). `contig` = `<MGYA assembly>_<rec.id>`
+  (assembly-qualified, because `rec.id` alone repeats across assemblies).
+- `--limit N` for dev/tests (walks a deterministic subset instead of all 10 GB);
+  `--inspect DIR` to re-verify the schema. Tests: `tests/test_prepare_bgcatlas.py`.
+Secondary/noisy GT — report alongside MiBIG with the optimism caveat above.
 
 **`scripts/run_antismash_baseline.py`**
 Runs antiSMASH on a genome and converts its output to `predictions.parquet`.

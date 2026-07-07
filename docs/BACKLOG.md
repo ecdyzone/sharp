@@ -25,10 +25,16 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   Use `deepbgc_score` as `p_bgc`.
   Needs DeepBGC installed (`pip install deepbgc` or check bioconda).
 
-- [ ] **`scripts/prepare_bgcatlas_ground_truth.py`**
-  Parse BGC Atlas distribution format → `data/raw/bgcatlas_ground_truth.tsv`.
-  Inspect the actual BGC Atlas download format first — it may be GFF, TSV, or JSON.
-  Same output schema as `mibig_ground_truth.tsv`. Use as secondary benchmark only.
+- [x] **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ 2026-07-07
+  Parses the BGC Atlas `complete-bgcs` dump (204,661 antiSMASH `.gbk` files, one
+  region per file) → `data/raw/bgcatlas_ground_truth.tsv` (same schema as MiBIG GT).
+  Verified schema on real data: genomic coords come from the antiSMASH `Orig.
+  start`/`Orig. end` structured-comment fields (NOT the region-local LOCUS coords),
+  and are already 0-based half-open (`end-start == len(seq)`), so no conversion.
+  `cluster_id` = filename stem (unique, includes `.regionNNN`); `contig` =
+  `<MGYA assembly>_<rec.id>` (assembly-qualified, since rec.id repeats across
+  assemblies). `--limit N` for dev/tests; `--inspect` to re-verify schema. Tests:
+  `tests/test_prepare_bgcatlas.py` (24, synthetic gbk fixtures). Secondary/noisy GT.
 
 - [ ] **Literature check: other tools to benchmark against**
   The coworker says "check recent literature if it's worth including more."
