@@ -14,16 +14,28 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   427 clusters, not ~900. Documented as a benchmark caveat in `CLAUDE.md` and
   `PIPELINE.md`. No code change needed; the drop is already logged by the script.
 
-- [ ] **`scripts/run_antismash_baseline.py`**
-  Run antiSMASH on a genome → parse JSON summary → `data/interim/antismash_predictions.parquet`.
-  antiSMASH JSON: `records[].features[]` where `type == "region"`. Set `p_bgc=1.0` (no score).
-  Needs antiSMASH installed in the pixi environment (`bioconda::antismash`).
+  **Baseline model:** S(H)ARP never invokes antiSMASH/DeepBGC/GECCO (incompatible
+  deps → each in its own pixi env via `scripts/setup_<tool>.sh`). The user runs the
+  tool; S(H)ARP only parses the output. So each baseline gets a **converter**
+  (`convert_<tool>_to_parquet.py`), not a subprocess wrapper. Each isolates column
+  names + coordinate base in one place and has an `--inspect` mode; tests use a
+  small checked-in real output fixture (no tool execution). Coordinate base per
+  tool: antiSMASH 0-based half-open (no conversion); DeepBGC/GECCO likely 1-based
+  inclusive (→ `start-1`), verify via `--inspect`.
 
-- [ ] **`scripts/run_deepbgc_baseline.py`**
-  Run DeepBGC → parse `.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`.
-  DeepBGC TSV columns: `sequence_id`, `start`, `end`, `deepbgc_score`, `product_class`.
+- [ ] **`scripts/convert_antismash_to_parquet.py`**
+  Parse antiSMASH JSON summary → `data/interim/antismash_predictions.parquet`.
+  JSON: `records[].features[]` where `type == "region"`. Set `p_bgc=1.0` (no score).
+
+- [ ] **`scripts/convert_deepbgc_to_parquet.py`**
+  Parse DeepBGC `.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`.
+  Columns: `sequence_id`, `start`, `end`, `deepbgc_score`, `product_class`.
   Use `deepbgc_score` as `p_bgc`.
-  Needs DeepBGC installed (`pip install deepbgc` or check bioconda).
+
+- [ ] **`scripts/convert_gecco_to_parquet.py`**
+  Parse GECCO `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.
+  Columns: `sequence_id`, `start`, `end`, `type`, `average_p` (confirm via `--inspect`).
+  Use `average_p` as `p_bgc`.
 
 - [x] **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ 2026-07-07
   Parses the BGC Atlas `complete-bgcs` dump (204,661 antiSMASH `.gbk` files, one
@@ -38,8 +50,9 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
 
 - [ ] **Literature check: other tools to benchmark against**
   The coworker says "check recent literature if it's worth including more."
-  Candidates as of mid-2025: GECCO, SanntiS, BiG-SCAPE (for clustering, not prediction).
-  Same pattern: parse output → `predictions.parquet` → `evaluate.py`.
+  antiSMASH, DeepBGC, GECCO are already in scope (converters above). Remaining
+  candidates as of mid-2025: SanntiS, BiG-SCAPE (for clustering, not prediction).
+  Same pattern: run tool in its own env → convert output → `evaluate.py`.
 
 - [ ] **`scripts/build_sarp_hmm.py`**
   Collect SARP seed sequences → align → `hmmbuild` → `data/raw/sarp_models.hmm`.
@@ -118,8 +131,10 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
 ## Tier 4 — validation infrastructure
 
 - [ ] **`tests/integration/`** directory with slow tests
-  Real tool invocations. Marked `@pytest.mark.slow`. Not run in default `pytest`.
-  Start with one test per external tool (Bakta, hmmscan, FIMO, antiSMASH, DeepBGC).
+  Real invocations of the **pipeline's own** tools (Bakta, hmmscan, FIMO), which
+  live in the S(H)ARP env. Marked `@pytest.mark.slow`. Not run in default `pytest`.
+  NB: the baseline tools (antiSMASH/DeepBGC/GECCO) are *not* tested here — they run
+  in separate envs; their converters are tested against checked-in output fixtures.
 
 - [ ] **End-to-end smoke test on a known Streptomyces genome**
   Suggested: *S. coelicolor* A3(2) (NCBI: AL645882). MiBIG has ~20 clusters from it.
@@ -135,7 +150,7 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
 - Evo (nucleotide language model) embeddings — `neighborhood_dna.fna` already generated
 - GNN embeddings from knowledge graph
 - Multi-class classification
-- GECCO, SanntiS as additional baselines if literature supports it
+- SanntiS as an additional baseline if literature supports it
 - Snakemake / Nextflow DAG for cluster execution
 
 ---

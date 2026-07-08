@@ -77,6 +77,34 @@ pixi run python -m sharp.evaluate \
 # Output: precision=0.737, recall=0.700, F1=0.718 — matches the generator's prediction
 ```
 
+### Competitor baselines (antiSMASH / DeepBGC / GECCO)
+
+S(H)ARP does **not** run these tools — each has incompatible dependencies and
+installs into its own isolated pixi env via `scripts/setup_<tool>.sh`. You run
+the tool yourself, then convert its output to `predictions.parquet` and evaluate
+it exactly like S(H)ARP's own predictions.
+
+```bash
+# 1. Install a baseline into its own env (~/.local/src/<tool>/), one-time
+bash scripts/setup_antismash.sh
+
+# 2. Run it yourself, from its own env (or on HPC / in a container)
+cd ~/.local/src/antismash && pixi run antismash <genome.gbk> --output-dir <out>
+# for non-annotated fasta, the code changes a bit:
+# cd ~/.local/src/antismash && pixi run antismash <genome.fasta> --output-dir <out> --genefinding-tool prodigal
+
+# 3. Convert its output to predictions.parquet (runs in the S(H)ARP env)
+#    (converters not yet written — convert_{antismash,deepbgc,gecco}_to_parquet.py)
+pixi run python scripts/convert_antismash_to_parquet.py \
+    --input <out> --output data/interim/antismash_predictions.parquet
+
+# 4. Evaluate against the same ground truth as S(H)ARP
+pixi run python -m sharp.evaluate \
+    --predictions data/interim/antismash_predictions.parquet \
+    --ground-truth data/raw/mibig_ground_truth.tsv \
+    --output data/processed/benchmark_antismash.json
+```
+
 ### Preparing MiBiG Database
 
 ```bash
@@ -150,7 +178,10 @@ pixi run pytest
 │   ├── generate_mock_benchmark_data.py
 │   ├── generate_mock_data.py
 │   ├── prepare_bgcatlas_ground_truth.py
-│   └── prepare_mibig_ground_truth.py
+│   ├── prepare_mibig_ground_truth.py
+│   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
+│   ├── setup_deepbgc.sh
+│   └── setup_gecco.sh
 ├── src
 │   └── sharp
 │       ├── __init__.py

@@ -222,8 +222,11 @@ One section per BGC: coordinates, class, score, domain architecture.
 
 ## Benchmark loop ✅ (parallel to main pipeline, team priority)
 
-The same `evaluate.py` handles all three tools — each just needs its output
-converted to `predictions.parquet` first.
+The same `evaluate.py` handles every tool — each just needs its output
+converted to `predictions.parquet` first. S(H)ARP does **not** run the baseline
+tools: antiSMASH, DeepBGC, and GECCO each live in their own isolated pixi env
+(incompatible dependencies) and are run by the user; S(H)ARP only parses their
+output files.
 
 ```
                          mibig_ground_truth.tsv   (primary)
@@ -243,10 +246,15 @@ antismash_predictions.parquet   │         deepbgc_predictions.parquet
     benchmark_antismash.json  benchmark_sharp.json  benchmark_deepbgc.json
 ```
 
-Conversion scripts (not yet written, Tier 0 priority):
-- `scripts/run_antismash_baseline.py` — antiSMASH JSON → predictions.parquet
-- `scripts/run_deepbgc_baseline.py` — DeepBGC TSV → predictions.parquet
-- `scripts/prepare_bgcatlas_ground_truth.py` — BGC Atlas → ground_truth.tsv
+Converter scripts (parse tool output, no subprocess; not yet written, Tier 0):
+- `scripts/convert_antismash_to_parquet.py` — antiSMASH JSON → predictions.parquet
+- `scripts/convert_deepbgc_to_parquet.py` — DeepBGC `.bgc.tsv` → predictions.parquet
+- `scripts/convert_gecco_to_parquet.py` — GECCO `.clusters.tsv` → predictions.parquet
+- `scripts/prepare_bgcatlas_ground_truth.py` — BGC Atlas → ground_truth.tsv ✅
+
+Each converter provides an `--inspect` mode and isolates the tool's column names +
+coordinate base in one place; coordinate base is verified per tool (antiSMASH is
+0-based half-open; DeepBGC and GECCO are likely 1-based inclusive → `start-1`).
 
 BGC Atlas note: computationally predicted, no manual curation. Benchmark numbers
 against it are systematically optimistic. Always report alongside MiBIG numbers.

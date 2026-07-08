@@ -170,3 +170,27 @@ have corresponding `sharp/` modules.
 
 `build_sarp_hmm.py`: collect SARP sequences from UniProt/literature → align (MUSCLE or MAFFT) → `hmmbuild`.
 `build_kg.py`: parse `mibig_json_4.0/` + BGC Atlas → build NetworkX graph → serialize.
+
+---
+
+## Competitor baselines (not pipeline steps)
+
+antiSMASH, DeepBGC, and GECCO have mutually incompatible dependencies, so each
+installs into its own isolated pixi env under `~/.local/src/<tool>/`. S(H)ARP
+never invokes them: the user runs the tool, and S(H)ARP only **parses the output
+files** into `predictions.parquet` — one converter script per tool, no subprocess.
+
+| Script | Status | Role |
+|---|---|---|
+| `setup_antismash.sh` | ✅ written | install antiSMASH into its own pixi env |
+| `setup_deepbgc.sh` | ✅ written | install DeepBGC into its own pixi env |
+| `setup_gecco.sh` | ✅ written | install GECCO into its own pixi env |
+| `convert_antismash_to_parquet.py` | 🔲 not written | antiSMASH JSON → `antismash_predictions.parquet` |
+| `convert_deepbgc_to_parquet.py` | 🔲 not written | DeepBGC `.bgc.tsv` → `deepbgc_predictions.parquet` |
+| `convert_gecco_to_parquet.py` | 🔲 not written | GECCO `.clusters.tsv` → `gecco_predictions.parquet` |
+
+Each converter isolates the tool's column names + coordinate base in one place and
+offers an `--inspect` mode (like `prepare_mibig_ground_truth.py`). Coordinate base
+is verified per tool and normalized to 0-based half-open: antiSMASH is already
+0-based half-open; DeepBGC and GECCO are likely 1-based inclusive (→ `start-1`).
+See `CLAUDE.md` → "Baseline integration" for the full spec.

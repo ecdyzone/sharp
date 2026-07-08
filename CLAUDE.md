@@ -267,7 +267,37 @@ Two consequences to report in any paper/presentation:
   it does mean absolute recall numbers are "recall over coordinate-resolved MiBIG,"
   not "recall over all known *Streptomyces* BGCs."
 
-### Baseline conversion scripts (not yet written)
+### Baseline integration — converters, not wrappers
+
+**S(H)ARP never invokes the baseline tools.** antiSMASH, DeepBGC, and GECCO each
+install into their own isolated pixi env under `~/.local/src/<tool>/` (via
+`scripts/setup_<tool>.sh`) — they have mutually incompatible dependencies and
+must stay isolated. You run each tool yourself (its own env, or HPC, or a
+container); S(H)ARP only parses the *output files* it leaves behind.
+
+So each baseline gets one **converter** script (not a subprocess wrapper):
+
+```
+scripts/convert_<tool>_to_parquet.py --input <tool output> --output <predictions.parquet>
+```
+
+Runs entirely in the S(H)ARP env, no external binary, no tool-path config.
+Each converter isolates every tool-format assumption (column names, coordinate
+base) in one clearly-marked block and provides an `--inspect` mode that prints a
+real output file's structure — verify the schema against actual output before
+trusting the parser (same pattern as `prepare_mibig_ground_truth.py`).
+
+**Coordinate base is tool-specific — verify per tool, convert to 0-based half-open:**
+
+| Tool | `p_bgc` source | Coordinate base | Conversion |
+|---|---|---|---|
+| antiSMASH | none → set `1.0` | 0-based half-open (verified, see BGC Atlas note) | none |
+| DeepBGC | `deepbgc_score` | BioPython-backed → likely 1-based inclusive (verify) | `start - 1` |
+| GECCO | `average_p` | GenBank-backed → likely 1-based inclusive (verify) | `start - 1` |
+
+Tests parse a small, checked-in, real (trimmed) output fixture per tool — no tool
+execution in the suite (that would break env isolation). Same approach as
+`test_prepare_mibig.py`.
 
 **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ done (2026-07-07)
 Parses the BGC Atlas `complete-bgcs` dump — 204,661 antiSMASH-produced `.gbk`
@@ -285,20 +315,20 @@ under `data/raw/complete-bgcs/`). Output: `data/raw/bgcatlas_ground_truth.tsv`
   `--inspect DIR` to re-verify the schema. Tests: `tests/test_prepare_bgcatlas.py`.
 Secondary/noisy GT — report alongside MiBIG with the optimism caveat above.
 
-**`scripts/run_antismash_baseline.py`**
-Runs antiSMASH on a genome and converts its output to `predictions.parquet`.
-antiSMASH output format: per-region GenBank files + a JSON summary (`regions.js`
-or `<genome>.json`). The JSON summary is the cleanest parse target.
-Key fields to extract: `records[].features[]` where `type == "region"`,
+**`scripts/convert_antismash_to_parquet.py`** (not yet written)
+Parses antiSMASH output → `data/interim/antismash_predictions.parquet` (same
+schema as `PredictedRegion`). Cleanest parse target is the JSON summary
+(`<genome>.json` / `regions.js`): `records[].features[]` where `type == "region"`,
 with `qualifiers.region_number`, `qualifiers.product`, and coordinates from `location`.
-Output: `data/interim/antismash_predictions.parquet` (same schema as `PredictedRegion`).
-Set `p_bgc=1.0` for all antiSMASH predictions (it doesn't produce scores).
 
-**`scripts/run_deepbgc_baseline.py`**
-Runs DeepBGC and converts its output. DeepBGC produces a `.bgc.tsv` with columns
-including `sequence_id`, `start`, `end`, `deepbgc_score`, `product_class`.
-Output: `data/interim/deepbgc_predictions.parquet`.
-Use `deepbgc_score` as `p_bgc`.
+**`scripts/convert_deepbgc_to_parquet.py`** (not yet written)
+Parses DeepBGC's `.bgc.tsv` (`sequence_id`, `start`, `end`, `deepbgc_score`,
+`product_class`) → `data/interim/deepbgc_predictions.parquet`.
+
+**`scripts/convert_gecco_to_parquet.py`** (not yet written)
+Parses GECCO's `<genome>.clusters.tsv` (`sequence_id`, `start`, `end`, `type`,
+`average_p`, …) → `data/interim/gecco_predictions.parquet`. Confirm exact column
+names via `--inspect` on real output before trusting them.
 
 ### Running a full comparison
 
@@ -308,13 +338,14 @@ python scripts/prepare_mibig_ground_truth.py \
     --input-dir data/raw/mibig_json_4.0 \
     --output data/raw/mibig_ground_truth.tsv --genus Streptomyces
 
-# Run baselines on the same genome
-python scripts/run_antismash_baseline.py \
-    --genome data/raw/genome.fasta \
+# Run each baseline yourself in its own env (see scripts/setup_<tool>.sh), then
+# convert its output — S(H)ARP never invokes the tools:
+python scripts/convert_antismash_to_parquet.py \
+    --input <antismash output dir/json> \
     --output data/interim/antismash_predictions.parquet
 
-python scripts/run_deepbgc_baseline.py \
-    --genome data/raw/genome.fasta \
+python scripts/convert_deepbgc_to_parquet.py \
+    --input <deepbgc .bgc.tsv> \
     --output data/interim/deepbgc_predictions.parquet
 
 # Evaluate all three against the same ground truth
