@@ -135,6 +135,10 @@ pixi run pytest
 ├── environment.yml
 ├── LICENSE
 ├── notebooks
+│   ├── benchmarks_part1.py
+│   ├── conversions
+│   │   ├── benchmarks_part1.html
+│   │   └── benchmarks_part1.ipynb
 │   └── inspecting_parquet.py
 ├── pixi.lock
 ├── pixi.toml
