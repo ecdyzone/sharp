@@ -18,6 +18,8 @@ dependencies:
 - openssl >=3.6.3,<4
 - ca-certificates >=2026.5.20,<2027
 - certifi >=2026.5.20,<2027
+- jupyterlab >=4.6.1,<5
+- ipykernel >=7.3.0,<8
 - pip
 - pip:
   - -e .
