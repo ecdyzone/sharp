@@ -94,7 +94,7 @@ cd ~/.local/src/antismash && pixi run antismash <genome.gbk> --output-dir <out>
 # cd ~/.local/src/antismash && pixi run antismash <genome.fasta> --output-dir <out> --genefinding-tool prodigal
 
 # 3. Convert its output to predictions.parquet (runs in the S(H)ARP env)
-#    (antiSMASH converter written; DeepBGC/GECCO converters not yet written)
+#    (antiSMASH + DeepBGC converters written; GECCO converter not yet written)
 #    Inspect first to verify the schema against your actual output:
 pixi run python scripts/convert_antismash_to_parquet.py --inspect <out>
 
@@ -106,6 +106,22 @@ pixi run python -m sharp.evaluate \
     --predictions data/interim/antismash_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
     --output data/processed/benchmark_antismash.json
+```
+
+DeepBGC follows the same shape — the tool runs in its own env, S(H)ARP only parses `<prefix>.bgc.tsv`:
+
+```bash
+bash scripts/setup_deepbgc.sh
+cd ~/.local/src/deepbgc && pixi run deepbgc pipeline <genome.fasta> --output out
+
+pixi run python scripts/convert_deepbgc_to_parquet.py --inspect out
+pixi run python scripts/convert_deepbgc_to_parquet.py \
+    --input out --output data/interim/deepbgc_predictions.parquet
+
+pixi run python -m sharp.evaluate \
+    --predictions data/interim/deepbgc_predictions.parquet \
+    --ground-truth data/raw/mibig_ground_truth.tsv \
+    --output data/processed/benchmark_deepbgc.json
 ```
 
 ### Preparing MiBiG Database
@@ -177,6 +193,7 @@ pixi run pytest
 ├── README.md
 ├── scripts
 │   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
+│   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── download_bgc-atlas.sh
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
@@ -198,8 +215,10 @@ pixi run pytest
 └── tests
     ├── conftest.py
     ├── fixtures
-    │   └── antismash_sequence.json   # trimmed real antiSMASH 8.0.4 summary
+    │   ├── antismash_sequence.json   # trimmed real antiSMASH 8.0.4 summary
+    │   └── deepbgc_out.bgc.tsv       # real (unmodified) DeepBGC 0.1.0 output
     ├── test_convert_antismash.py
+    ├── test_convert_deepbgc.py
     ├── test_evaluate.py
     ├── test_extract_embeddings.py
     ├── test_generate_mock_data.py

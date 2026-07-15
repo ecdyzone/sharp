@@ -142,6 +142,7 @@ Package is installed editable: `import sharp.io` works anywhere.
 | `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode | `test_prepare_mibig.py` |
 | `scripts/prepare_bgcatlas_ground_truth.py` | BGC Atlas `.gbk` dump → `bgcatlas_ground_truth.tsv` (secondary/noisy GT) | `test_prepare_bgcatlas.py` |
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
+| `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
 
 ---
 
@@ -363,8 +364,9 @@ Parses `sequence.json` → `data/interim/antismash_predictions.parquet`. Iterate
 - `p_bgc` = `1.0` (antiSMASH is rule-based, no score)
 Multi-contig genomes: loop all of `data['records']`, not just the first.
 
-**`scripts/convert_deepbgc_to_parquet.py`** (not yet written — plan finalized
-2026-07-15, verified against a real DeepBGC run)
+**`scripts/convert_deepbgc_to_parquet.py`** ✅ written (2026-07-15, verified
+against a real DeepBGC 0.1.0 run; tests: `tests/test_convert_deepbgc.py`,
+fixture: `tests/fixtures/deepbgc_out.bgc.tsv` — real, unmodified output)
 Parses `out.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`. Real header
 (28 columns) confirms `product_class` exists as documented, but it sits at column
 18, after several unrelated columns (`detector_version`, `num_proteins`,

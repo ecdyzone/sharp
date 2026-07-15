@@ -42,13 +42,16 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   checked-in trimmed real fixture (`tests/fixtures/antismash_sequence.json`) and
   verified live against the full real run output.
 
-- [ ] **`scripts/convert_deepbgc_to_parquet.py`** — plan finalized 2026-07-15
-  Parse `out.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`. Coordinate
-  columns are `nucl_start`/`nucl_end` (not `start`/`end`), 0-based half-open, no
-  conversion. `region_id = bgc_candidate_id` (already unique). `p_bgc =
-  deepbgc_score`. `predicted_class = product_class` — confirmed to exist (28-col
-  real header) but frequently empty string (4/5 rows in verification run);
-  consumers must handle blank class.
+- [x] **`scripts/convert_deepbgc_to_parquet.py`** ✅ 2026-07-15
+  Parses `<prefix>.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`.
+  Coordinate columns are `nucl_start`/`nucl_end` (not `start`/`end`), 0-based
+  half-open, no conversion. `region_id = bgc_candidate_id` (already unique).
+  `p_bgc = deepbgc_score`. `predicted_class = product_class` — confirmed to
+  exist (28-col real header) but frequently empty string (4/5 rows in the
+  verification run) → mapped to `None`. `--inspect` mode; tests:
+  `tests/test_convert_deepbgc.py` (25 tests) against a checked-in real fixture
+  (`tests/fixtures/deepbgc_out.bgc.tsv`, unmodified, 5 rows) and verified live
+  against the full real output.
 
 - [ ] **`scripts/convert_gecco_to_parquet.py`** — plan finalized 2026-07-15
   Parse `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.

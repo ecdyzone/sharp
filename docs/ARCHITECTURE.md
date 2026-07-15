@@ -186,7 +186,7 @@ files** into `predictions.parquet` — one converter script per tool, no subproc
 | `setup_deepbgc.sh` | ✅ written | install DeepBGC into its own pixi env |
 | `setup_gecco.sh` | ✅ written | install GECCO into its own pixi env |
 | `convert_antismash_to_parquet.py` | ✅ written | antiSMASH JSON → `antismash_predictions.parquet` |
-| `convert_deepbgc_to_parquet.py` | 🔲 not written | DeepBGC `.bgc.tsv` → `deepbgc_predictions.parquet` |
+| `convert_deepbgc_to_parquet.py` | ✅ written | DeepBGC `.bgc.tsv` → `deepbgc_predictions.parquet` |
 | `convert_gecco_to_parquet.py` | 🔲 not written | GECCO `.clusters.tsv` → `gecco_predictions.parquet` |
 
 Each converter isolates the tool's column names + coordinate base in one place and
