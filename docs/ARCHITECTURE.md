@@ -191,6 +191,9 @@ files** into `predictions.parquet` — one converter script per tool, no subproc
 
 Each converter isolates the tool's column names + coordinate base in one place and
 offers an `--inspect` mode (like `prepare_mibig_ground_truth.py`). Coordinate base
-is verified per tool and normalized to 0-based half-open: antiSMASH is already
-0-based half-open; DeepBGC and GECCO are likely 1-based inclusive (→ `start-1`).
-See `CLAUDE.md` → "Baseline integration" for the full spec.
+verified 2026-07-15 against a real run of all three tools on the same input FASTA
+(evidence: span vs. matching `.gbk` LOCUS bp length, checked across every output
+row, not just one): antiSMASH and DeepBGC are **both** already 0-based half-open,
+no conversion; GECCO is 1-based inclusive, needs `start-1`. This confirms the old
+hypothesis for GECCO but refutes it for DeepBGC (was assumed 1-based).
+See `CLAUDE.md` → "Baseline integration" for the full spec and evidence.

@@ -287,13 +287,42 @@ base) in one clearly-marked block and provides an `--inspect` mode that prints a
 real output file's structure — verify the schema against actual output before
 trusting the parser (same pattern as `prepare_mibig_ground_truth.py`).
 
-**Coordinate base is tool-specific — verify per tool, convert to 0-based half-open:**
+**Coordinate base is tool-specific — verified per tool 2026-07-15 against a real
+run (`antismash 8.0.4`, `deepbgc`, `gecco 0.10.3` on the same input FASTA,
+`AL589148.1`).**
 
 | Tool | `p_bgc` source | Coordinate base | Conversion |
 |---|---|---|---|
-| antiSMASH | none → set `1.0` | 0-based half-open (verified, see BGC Atlas note) | none |
-| DeepBGC | `deepbgc_score` | BioPython-backed → likely 1-based inclusive (verify) | `start - 1` |
-| GECCO | `average_p` | GenBank-backed → likely 1-based inclusive (verify) | `start - 1` |
+| antiSMASH | none → set `1.0` | 0-based half-open (verified) | none |
+| DeepBGC | `deepbgc_score` | 0-based half-open (verified) | none — refutes old hypothesis |
+| GECCO | `average_p` | 1-based inclusive (verified) | `start - 1`, `end` unchanged — confirms old hypothesis |
+
+Evidence (span = `end - start` from the TSV/JSON row, cross-checked against the
+matching region/cluster `.gbk` LOCUS bp length, across every row in each output —
+not just one — since a single row can't distinguish the two conventions if
+mis-signed. If `span == LOCUS bp`, the source is 0-based half-open. If
+`span == LOCUS bp - 1`, the source is 1-based inclusive (the `.gbk` extraction
+naturally has `LOCUS bp = end - start + 1` bases for an inclusive interval):
+- **antiSMASH**: `sequence.json` region `location` string is `"[201195:222794](+)"`
+  (not plain ints — needs regex parsing). Both regions checked: span exactly equals
+  the matching `region00N.gbk` LOCUS bp (`21599`/`21599`, `28972`/`28972`). 0-based
+  half-open, no conversion. Same value also available as `Orig. start`/`Orig. end`
+  in the region `.gbk` COMMENT block.
+- **DeepBGC**: `out.bgc.tsv` columns are `nucl_start`/`nucl_end` (not `start`/`end`).
+  All 5 rows checked against `out.bgc.gbk`'s 5 LOCUS records: span exactly equals
+  LOCUS bp every time (`10290/10290`, `225/225`, `2679/2679`, `5760/5760`,
+  `94301/94301`). 0-based half-open, no conversion needed.
+- **GECCO**: `sequence.clusters.tsv` columns are `start`/`end`. All 5 clusters
+  checked against their `_cluster_N.gbk` LOCUS bp: span is `LOCUS bp - 1` every
+  time (e.g. cluster_1 span `33568` vs LOCUS `33569`; cluster_3 span `44782` vs
+  LOCUS `44783`). Consistent off-by-one across every row confirms 1-based
+  inclusive, not 0-based half-open — convert with `start - 1`, `end` as-is, same
+  as the MiBIG ingest pattern.
+
+**Caution for implementation:** a coordinate check on a single row can look
+consistent with either convention if you only compare one direction of the
+off-by-one; always check the full span-vs-LOCUS relationship (`==` vs `== -1`)
+across multiple rows before trusting the parser, as done above.
 
 Tests parse a small, checked-in, real (trimmed) output fixture per tool — no tool
 execution in the suite (that would break env isolation). Same approach as
@@ -315,20 +344,56 @@ under `data/raw/complete-bgcs/`). Output: `data/raw/bgcatlas_ground_truth.tsv`
   `--inspect DIR` to re-verify the schema. Tests: `tests/test_prepare_bgcatlas.py`.
 Secondary/noisy GT — report alongside MiBIG with the optimism caveat above.
 
-**`scripts/convert_antismash_to_parquet.py`** (not yet written)
-Parses antiSMASH output → `data/interim/antismash_predictions.parquet` (same
-schema as `PredictedRegion`). Cleanest parse target is the JSON summary
-(`<genome>.json` / `regions.js`): `records[].features[]` where `type == "region"`,
-with `qualifiers.region_number`, `qualifiers.product`, and coordinates from `location`.
+**`scripts/convert_antismash_to_parquet.py`** (not yet written — plan finalized
+2026-07-15, verified against a real `antismash 8.0.4` run)
+Parses `sequence.json` → `data/interim/antismash_predictions.parquet`. Iterate
+`data['records'][*]['features']` where `type == "region"`. Per region:
+- `contig` = `record['id']`
+- `start`/`end` = regex-parsed from the `location` string `"[start:end](strand)"`
+  (it is a string, not plain ints) — 0-based half-open, no conversion
+- `region_id` = `f"{contig}.region{region_number:03d}"` (mirrors the
+  `<contig>.region00N.gbk` filename, so a region row can always be traced back to
+  its source `.gbk`; `qualifiers.region_number` alone resets per contig and is not
+  globally unique)
+- `predicted_class` = `";".join(qualifiers['product'])` (hybrid regions can list
+  multiple products, e.g. `["furan", "butyrolactone"]` — join rather than truncate)
+- `p_bgc` = `1.0` (antiSMASH is rule-based, no score)
+Multi-contig genomes: loop all of `data['records']`, not just the first.
 
-**`scripts/convert_deepbgc_to_parquet.py`** (not yet written)
-Parses DeepBGC's `.bgc.tsv` (`sequence_id`, `start`, `end`, `deepbgc_score`,
-`product_class`) → `data/interim/deepbgc_predictions.parquet`.
+**`scripts/convert_deepbgc_to_parquet.py`** (not yet written — plan finalized
+2026-07-15, verified against a real DeepBGC run)
+Parses `out.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`. Real header
+(28 columns) confirms `product_class` exists as documented, but it sits at column
+18, after several unrelated columns (`detector_version`, `num_proteins`,
+`product_activity`, per-activity probabilities) — don't assume column order.
+Per row:
+- `contig` = `sequence_id`
+- `start`/`end` = `nucl_start`/`nucl_end` (**not** `start`/`end` — different column
+  names than GECCO despite the same convention) — 0-based half-open, no conversion
+- `region_id` = `bgc_candidate_id` (already unique, e.g. `AL589148.1_31460-41750.1`)
+- `p_bgc` = `deepbgc_score`
+- `predicted_class` = `product_class` — **frequently empty string** in practice
+  (4 of 5 rows in the verification run); downstream consumers must handle a blank
+  class, not assume it's always populated.
 
-**`scripts/convert_gecco_to_parquet.py`** (not yet written)
-Parses GECCO's `<genome>.clusters.tsv` (`sequence_id`, `start`, `end`, `type`,
-`average_p`, …) → `data/interim/gecco_predictions.parquet`. Confirm exact column
-names via `--inspect` on real output before trusting them.
+**`scripts/convert_gecco_to_parquet.py`** (not yet written — plan finalized
+2026-07-15, verified against a real `gecco 0.10.3` run)
+Parses `sequence.clusters.tsv` → `data/interim/gecco_predictions.parquet`. Real
+header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p`,
+`type`, plus per-class probability columns (`nrp_probability`,
+`polyketide_probability`, etc.) and `proteins`/`domains` list columns. Per row:
+- `contig` = `sequence_id`
+- `start`/`end` — **1-based inclusive, requires conversion**: `start - 1`, `end`
+  unchanged (verified across all 5 rows against `.gbk` LOCUS lengths — see
+  coordinate table above; this is the one tool where CLAUDE.md's original
+  hypothesis held)
+- `region_id` = `cluster_id` (already unique, e.g. `AL589148.1_cluster_1`)
+- `p_bgc` = `average_p`
+- `predicted_class` = `type` — **was `"Unknown"` for every row** in the
+  verification run (5/5); the per-class probability columns are more informative
+  when this happens but v1 keeps `type` as-is (simple, matches `PredictedRegion`
+  schema) rather than deriving an argmax class, which is a modeling decision to
+  revisit later if `"Unknown"` turns out to dominate real runs too.
 
 ### Running a full comparison
 

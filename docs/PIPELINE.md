@@ -253,8 +253,10 @@ Converter scripts (parse tool output, no subprocess; not yet written, Tier 0):
 - `scripts/prepare_bgcatlas_ground_truth.py` — BGC Atlas → ground_truth.tsv ✅
 
 Each converter provides an `--inspect` mode and isolates the tool's column names +
-coordinate base in one place; coordinate base is verified per tool (antiSMASH is
-0-based half-open; DeepBGC and GECCO are likely 1-based inclusive → `start-1`).
+coordinate base in one place; coordinate base verified 2026-07-15 against a real
+run of all three tools: antiSMASH and DeepBGC are both 0-based half-open (no
+conversion); GECCO is 1-based inclusive (`start-1`). See `CLAUDE.md` → "Baseline
+integration" for the per-tool evidence.
 
 BGC Atlas note: computationally predicted, no manual curation. Benchmark numbers
 against it are systematically optimistic. Always report alongside MiBIG numbers.

@@ -19,23 +19,42 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   tool; S(H)ARP only parses the output. So each baseline gets a **converter**
   (`convert_<tool>_to_parquet.py`), not a subprocess wrapper. Each isolates column
   names + coordinate base in one place and has an `--inspect` mode; tests use a
-  small checked-in real output fixture (no tool execution). Coordinate base per
-  tool: antiSMASH 0-based half-open (no conversion); DeepBGC/GECCO likely 1-based
-  inclusive (→ `start-1`), verify via `--inspect`.
+  small checked-in real output fixture (no tool execution).
 
-- [ ] **`scripts/convert_antismash_to_parquet.py`**
-  Parse antiSMASH JSON summary → `data/interim/antismash_predictions.parquet`.
-  JSON: `records[].features[]` where `type == "region"`. Set `p_bgc=1.0` (no score).
+  **Coordinate base — verified 2026-07-15** against a real run of all three tools
+  on the same input FASTA (`AL589148.1`), by comparing span (`end-start`) against
+  the matching region/cluster `.gbk` LOCUS bp length across every output row:
+  antiSMASH **and** DeepBGC are both 0-based half-open (no conversion — refutes
+  the old "DeepBGC likely 1-based" guess); GECCO is 1-based inclusive (`start-1`,
+  `end` unchanged — confirms the old guess). Full evidence in `CLAUDE.md` →
+  "Baseline integration". Converter plans below are finalized against real output,
+  not yet implemented.
 
-- [ ] **`scripts/convert_deepbgc_to_parquet.py`**
-  Parse DeepBGC `.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`.
-  Columns: `sequence_id`, `start`, `end`, `deepbgc_score`, `product_class`.
-  Use `deepbgc_score` as `p_bgc`.
+- [ ] **`scripts/convert_antismash_to_parquet.py`** — plan finalized 2026-07-15
+  Parse `sequence.json` → `data/interim/antismash_predictions.parquet`.
+  `records[].features[]` where `type == "region"`. `location` is a string
+  `"[start:end](strand)"` (regex parse, not plain ints), 0-based half-open, no
+  conversion. `region_id = f"{contig}.region{region_number:03d}"` (matches the
+  `.gbk` filename; `region_number` alone resets per contig). `predicted_class` =
+  `;`-joined `qualifiers['product']` (hybrid regions list multiple products).
+  `p_bgc=1.0` (no score). Loop all `records`, not just the first (multi-contig).
 
-- [ ] **`scripts/convert_gecco_to_parquet.py`**
-  Parse GECCO `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.
-  Columns: `sequence_id`, `start`, `end`, `type`, `average_p` (confirm via `--inspect`).
-  Use `average_p` as `p_bgc`.
+- [ ] **`scripts/convert_deepbgc_to_parquet.py`** — plan finalized 2026-07-15
+  Parse `out.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`. Coordinate
+  columns are `nucl_start`/`nucl_end` (not `start`/`end`), 0-based half-open, no
+  conversion. `region_id = bgc_candidate_id` (already unique). `p_bgc =
+  deepbgc_score`. `predicted_class = product_class` — confirmed to exist (28-col
+  real header) but frequently empty string (4/5 rows in verification run);
+  consumers must handle blank class.
+
+- [ ] **`scripts/convert_gecco_to_parquet.py`** — plan finalized 2026-07-15
+  Parse `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.
+  Columns confirmed: `sequence_id`, `cluster_id`, `start`, `end`, `average_p`,
+  `max_p`, `type`, plus per-class probability columns. Coordinates are 1-based
+  inclusive — convert `start-1`, `end` unchanged. `region_id = cluster_id`
+  (already unique). `p_bgc = average_p`. `predicted_class = type`, kept as-is even
+  though it was `"Unknown"` for 5/5 rows in the verification run (argmax over the
+  per-class probability columns is a possible v2 improvement, not done now).
 
 - [x] **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ 2026-07-07
   Parses the BGC Atlas `complete-bgcs` dump (204,661 antiSMASH `.gbk` files, one
