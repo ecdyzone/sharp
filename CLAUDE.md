@@ -143,6 +143,7 @@ Package is installed editable: `import sharp.io` works anywhere.
 | `scripts/prepare_bgcatlas_ground_truth.py` | BGC Atlas `.gbk` dump → `bgcatlas_ground_truth.tsv` (secondary/noisy GT) | `test_prepare_bgcatlas.py` |
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
+| `scripts/convert_gecco_to_parquet.py` | GECCO `.clusters.tsv` → `predictions.parquet`; `start-1` coord conversion; `--inspect` mode | `test_convert_gecco.py` |
 
 ---
 
@@ -381,8 +382,9 @@ Per row:
   (4 of 5 rows in the verification run); downstream consumers must handle a blank
   class, not assume it's always populated.
 
-**`scripts/convert_gecco_to_parquet.py`** (not yet written — plan finalized
-2026-07-15, verified against a real `gecco 0.10.3` run)
+**`scripts/convert_gecco_to_parquet.py`** ✅ written (2026-07-15, verified
+against a real `gecco 0.10.3` run; tests: `tests/test_convert_gecco.py`,
+fixture: `tests/fixtures/gecco_sequence.clusters.tsv` — real, unmodified output)
 Parses `sequence.clusters.tsv` → `data/interim/gecco_predictions.parquet`. Real
 header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p`,
 `type`, plus per-class probability columns (`nrp_probability`,
@@ -418,7 +420,11 @@ python scripts/convert_deepbgc_to_parquet.py \
     --input <deepbgc .bgc.tsv> \
     --output data/interim/deepbgc_predictions.parquet
 
-# Evaluate all three against the same ground truth
+python scripts/convert_gecco_to_parquet.py \
+    --input <gecco .clusters.tsv> \
+    --output data/interim/gecco_predictions.parquet
+
+# Evaluate all against the same ground truth
 python -m sharp.evaluate \
     --predictions data/interim/antismash_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
@@ -428,6 +434,11 @@ python -m sharp.evaluate \
     --predictions data/interim/deepbgc_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
     --output data/processed/benchmark_deepbgc.json
+
+python -m sharp.evaluate \
+    --predictions data/interim/gecco_predictions.parquet \
+    --ground-truth data/raw/mibig_ground_truth.tsv \
+    --output data/processed/benchmark_gecco.json
 
 python -m sharp.evaluate \
     --predictions data/interim/predictions.parquet \

@@ -53,14 +53,23 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   (`tests/fixtures/deepbgc_out.bgc.tsv`, unmodified, 5 rows) and verified live
   against the full real output.
 
-- [ ] **`scripts/convert_gecco_to_parquet.py`** — plan finalized 2026-07-15
-  Parse `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.
+- [x] **`scripts/convert_gecco_to_parquet.py`** ✅ 2026-07-15
+  Parses `<genome>.clusters.tsv` → `data/interim/gecco_predictions.parquet`.
   Columns confirmed: `sequence_id`, `cluster_id`, `start`, `end`, `average_p`,
   `max_p`, `type`, plus per-class probability columns. Coordinates are 1-based
-  inclusive — convert `start-1`, `end` unchanged. `region_id = cluster_id`
-  (already unique). `p_bgc = average_p`. `predicted_class = type`, kept as-is even
+  inclusive — converted with `start-1`, `end` unchanged (the one baseline tool
+  where this conversion is actually needed). `region_id = cluster_id` (already
+  unique). `p_bgc = average_p`. `predicted_class = type`, kept as-is even
   though it was `"Unknown"` for 5/5 rows in the verification run (argmax over the
   per-class probability columns is a possible v2 improvement, not done now).
+  `--inspect` mode; tests: `tests/test_convert_gecco.py` (25 tests) against a
+  checked-in real fixture (`tests/fixtures/gecco_sequence.clusters.tsv`,
+  unmodified, 5 rows) and verified live against the full real output — the
+  coordinate conversion checks out exactly against `.gbk` LOCUS lengths.
+
+  **All three baseline converters (antiSMASH, DeepBGC, GECCO) are now done.**
+  Tier 0 benchmark-comparison work is otherwise complete pending real ground
+  truth + real tool runs at scale.
 
 - [x] **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ 2026-07-07
   Parses the BGC Atlas `complete-bgcs` dump (204,661 antiSMASH `.gbk` files, one
