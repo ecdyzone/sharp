@@ -30,14 +30,17 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   "Baseline integration". Converter plans below are finalized against real output,
   not yet implemented.
 
-- [ ] **`scripts/convert_antismash_to_parquet.py`** — plan finalized 2026-07-15
-  Parse `sequence.json` → `data/interim/antismash_predictions.parquet`.
+- [x] **`scripts/convert_antismash_to_parquet.py`** ✅ 2026-07-15
+  Parses `sequence.json` → `data/interim/antismash_predictions.parquet`.
   `records[].features[]` where `type == "region"`. `location` is a string
   `"[start:end](strand)"` (regex parse, not plain ints), 0-based half-open, no
   conversion. `region_id = f"{contig}.region{region_number:03d}"` (matches the
   `.gbk` filename; `region_number` alone resets per contig). `predicted_class` =
   `;`-joined `qualifiers['product']` (hybrid regions list multiple products).
-  `p_bgc=1.0` (no score). Loop all `records`, not just the first (multi-contig).
+  `p_bgc=1.0` (no score). Loops all `records`, not just the first (multi-contig).
+  `--inspect` mode; tests: `tests/test_convert_antismash.py` (23 tests) against a
+  checked-in trimmed real fixture (`tests/fixtures/antismash_sequence.json`) and
+  verified live against the full real run output.
 
 - [ ] **`scripts/convert_deepbgc_to_parquet.py`** — plan finalized 2026-07-15
   Parse `out.bgc.tsv` → `data/interim/deepbgc_predictions.parquet`. Coordinate

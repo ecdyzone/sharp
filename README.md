@@ -94,7 +94,10 @@ cd ~/.local/src/antismash && pixi run antismash <genome.gbk> --output-dir <out>
 # cd ~/.local/src/antismash && pixi run antismash <genome.fasta> --output-dir <out> --genefinding-tool prodigal
 
 # 3. Convert its output to predictions.parquet (runs in the S(H)ARP env)
-#    (converters not yet written — convert_{antismash,deepbgc,gecco}_to_parquet.py)
+#    (antiSMASH converter written; DeepBGC/GECCO converters not yet written)
+#    Inspect first to verify the schema against your actual output:
+pixi run python scripts/convert_antismash_to_parquet.py --inspect <out>
+
 pixi run python scripts/convert_antismash_to_parquet.py \
     --input <out> --output data/interim/antismash_predictions.parquet
 
@@ -173,6 +176,7 @@ pixi run pytest
 ├── pyproject.toml
 ├── README.md
 ├── scripts
+│   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
 │   ├── download_bgc-atlas.sh
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
@@ -193,6 +197,9 @@ pixi run pytest
 │       └── model_management.py
 └── tests
     ├── conftest.py
+    ├── fixtures
+    │   └── antismash_sequence.json   # trimmed real antiSMASH 8.0.4 summary
+    ├── test_convert_antismash.py
     ├── test_evaluate.py
     ├── test_extract_embeddings.py
     ├── test_generate_mock_data.py

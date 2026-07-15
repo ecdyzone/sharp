@@ -1,0 +1,80 @@
+{
+  "version": "8.0.4",
+  "input_file": "sequence.fasta",
+  "records": [
+    {
+      "id": "AL589148.1",
+      "name": "AL589148.1",
+      "features": [
+        {
+          "location": "[201195:222794](+)",
+          "type": "region",
+          "qualifiers": {
+            "candidate_cluster_numbers": [
+              "1"
+            ],
+            "contig_edge": [
+              "False"
+            ],
+            "product": [
+              "terpene"
+            ],
+            "region_number": [
+              "1"
+            ],
+            "rules": [
+              "(PT_phytoene_like or phytoene_synt or Lycopene_cycl or Lycopene_cycl_fung or T1TS or T1TS_KS or T2TS or TS_UbiA or TS_Pyr4)"
+            ],
+            "subregion_numbers": [],
+            "tool": [
+              "antismash"
+            ]
+          }
+        },
+        {
+          "location": "[226409:255381](+)",
+          "type": "region",
+          "qualifiers": {
+            "candidate_cluster_numbers": [
+              "2",
+              "3"
+            ],
+            "contig_edge": [
+              "False"
+            ],
+            "product": [
+              "furan",
+              "butyrolactone"
+            ],
+            "region_number": [
+              "2"
+            ],
+            "rules": [
+              "(mmyO or AvrD)",
+              "AfsA"
+            ],
+            "subregion_numbers": [],
+            "tool": [
+              "antismash"
+            ]
+          }
+        },
+        {
+          "location": "[898:1522](-)",
+          "type": "CDS",
+          "qualifiers": {
+            "locus_tag": [
+              "ctg1_1"
+            ],
+            "transl_table": [
+              "11"
+            ],
+            "translation": [
+              "MTDRLEWAHVSSPAELLYPGRDIDGAVVEPGEIAVAMWTGSNGIAVHGPREEVRNRFLQLAAAVDSAPPVRTEGGCIAEHSDPPHGQLAQANPEPGTEYVFVLSDYAHAAARALGRGWCGESGFLGAWGLVFCLEEPDTSPLEGRSVRLFVDAEGDLCVGLHDDVVPSSEWHYIPTEDLPDFAPRSPEELTAWGEVIASAIRRHYLT"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

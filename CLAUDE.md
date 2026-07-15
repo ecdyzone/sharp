@@ -140,6 +140,8 @@ Package is installed editable: `import sharp.io` works anywhere.
 | `scripts/generate_mock_data.py` | Synthetic proteins → FASTA (for embedding step smoke tests) | `test_generate_mock_data.py` |
 | `scripts/generate_mock_benchmark_data.py` | Synthetic predictions + GT with controlled overlap (for benchmark smoke tests) | `test_evaluate.py` (integration) |
 | `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode | `test_prepare_mibig.py` |
+| `scripts/prepare_bgcatlas_ground_truth.py` | BGC Atlas `.gbk` dump → `bgcatlas_ground_truth.tsv` (secondary/noisy GT) | `test_prepare_bgcatlas.py` |
+| `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 
 ---
 
@@ -344,8 +346,9 @@ under `data/raw/complete-bgcs/`). Output: `data/raw/bgcatlas_ground_truth.tsv`
   `--inspect DIR` to re-verify the schema. Tests: `tests/test_prepare_bgcatlas.py`.
 Secondary/noisy GT — report alongside MiBIG with the optimism caveat above.
 
-**`scripts/convert_antismash_to_parquet.py`** (not yet written — plan finalized
-2026-07-15, verified against a real `antismash 8.0.4` run)
+**`scripts/convert_antismash_to_parquet.py`** ✅ written (2026-07-15, verified
+against a real `antismash 8.0.4` run; tests: `tests/test_convert_antismash.py`,
+fixture: `tests/fixtures/antismash_sequence.json` — trimmed real summary JSON)
 Parses `sequence.json` → `data/interim/antismash_predictions.parquet`. Iterate
 `data['records'][*]['features']` where `type == "region"`. Per region:
 - `contig` = `record['id']`
