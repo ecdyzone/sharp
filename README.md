@@ -200,9 +200,12 @@ pixi run pytest
 ├── LICENSE
 ├── notebooks
 │   ├── benchmarks_part1.py
+│   ├── benchmarks_part2.py
 │   ├── conversions
 │   │   ├── benchmarks_part1.html
-│   │   └── benchmarks_part1.ipynb
+│   │   ├── benchmarks_part1.ipynb
+│   │   ├── benchmarks_part2.html
+│   │   └── benchmarks_part2.ipynb
 │   └── inspecting_parquet.py
 ├── pixi.lock
 ├── pixi.toml
