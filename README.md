@@ -141,6 +141,24 @@ pixi run python -m sharp.evaluate \
     --output data/processed/benchmark_gecco.json
 ```
 
+### Converting Parquet to TSV
+
+Any parquet file the pipeline produces (`predictions.parquet`,
+`embeddings.parquet`, `kg_features.parquet`, ...) can be dumped to a plain
+TSV for inspection or sharing. List-typed columns (e.g. `embeddings.parquet`'s
+`embedding` vector) have no TSV representation, so they're joined into a
+single comma-separated cell — this is a one-way, informational dump, not a
+round-trippable format.
+
+```bash
+# Inspect the schema first, especially for anything with list-typed columns
+pixi run python scripts/parquet_to_tsv.py --inspect data/interim/embeddings.parquet
+
+pixi run python scripts/parquet_to_tsv.py \
+    --input data/interim/predictions.parquet \
+    --output data/interim/predictions.tsv
+```
+
 ### Preparing MiBiG Database
 
 ```bash
@@ -219,6 +237,7 @@ pixi run pytest
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
 │   ├── generate_mock_data.py
+│   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
@@ -248,6 +267,7 @@ pixi run pytest
     ├── test_io.py
     ├── test_metrics.py
     ├── test_model_management.py
+    ├── test_parquet_to_tsv.py
     ├── test_prepare_bgcatlas.py
     └── test_prepare_mibig.py
 ```

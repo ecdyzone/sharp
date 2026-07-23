@@ -144,6 +144,7 @@ Package is installed editable: `import sharp.io` works anywhere.
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
 | `scripts/convert_gecco_to_parquet.py` | GECCO `.clusters.tsv` → `predictions.parquet`; `start-1` coord conversion; `--inspect` mode | `test_convert_gecco.py` |
+| `scripts/parquet_to_tsv.py` | Generic dump: any pipeline parquet file → TSV; list-typed columns (e.g. `embeddings.parquet`'s `embedding` vector) comma-joined per cell; `--inspect` mode | `test_parquet_to_tsv.py` |
 
 ---
 
