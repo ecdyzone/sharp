@@ -17,11 +17,12 @@ See `docs/PIPELINE.md` for the full biological pipeline. See `docs/ARCHITECTURE.
 ```
 project_root/
 ├── CLAUDE.md                   ← you are here
+├── .env.example                ← template for machine-specific settings (copy → .env, gitignored)
 ├── pyproject.toml              ← editable install: `pip install -e .`
 ├── pixi.toml                   ← environment (use pixi, not conda/pip directly)
 ├── src/sharp/
 │   ├── __init__.py
-│   ├── config.py               ← paths + config dataclasses (DONE)
+│   ├── config.py               ← paths + `.env` loading + config dataclasses (DONE)
 │   ├── io.py                   ← all data types + file I/O (DONE)
 │   ├── metrics.py              ← pure metric math (DONE)
 │   └── evaluate.py             ← benchmark step orchestration (DONE)
@@ -31,6 +32,7 @@ project_root/
 │   └── prepare_mibig_ground_truth.py   ← parse MiBIG 4.0 JSON → ground_truth.tsv (DONE)
 ├── tests/
 │   ├── conftest.py
+│   ├── test_config.py
 │   ├── test_io.py
 │   ├── test_model_management.py
 │   ├── test_extract_embeddings.py
@@ -111,6 +113,18 @@ Package is installed editable: `import sharp.io` works anywhere.
 
 **Config dataclasses in `config.py`.** One frozen dataclass per pipeline step (e.g. `EmbeddingConfig`, `EvaluateConfig`). Steps receive a config object, not loose `**kwargs`.
 
+**`.env` is for machine identity, not pipeline behaviour.** `config.py` reads an optional gitignored `.env` at the project root (template: `.env.example`) to resolve the data-dir constants and `DEFAULT_DEVICE`. Precedence: real env var → `.env` → in-repo default.
+
+| Belongs in `.env` | Never in `.env` |
+|---|---|
+| `SHARP_DATA_ROOT` (+ `SHARP_{RAW,INTERIM,PROCESSED,MOCK}_DIR`) | Thresholds (`min_overlap_frac`, e-value cutoffs) |
+| `SHARP_DEVICE` — hardware physically present | `model_name`, `batch_size`, `max_length` |
+| Credentials, once a step actually needs one | Anything that changes what a run *means* |
+
+Reason: a benchmark number must be reproducible from its command line. If a threshold could come from an unversioned file, the same command could produce different numbers on the laptop and the server. When adding a new step, put its knobs in the config dataclass and on the CLI — reach for `.env` only if the value describes the machine rather than the experiment.
+
+Paths are resolved once at import, so tests that need different values reload the module under a patched environment (see `tests/test_config.py`). Don't add `python-dotenv` — the loader in `config.py` is intentionally ~15 lines.
+
 **Each pipeline step = one module** with a `run(cfg: StepConfig) -> None` function and a `build_parser() -> argparse.ArgumentParser` function. Entry point: `python -m sharp.<step>`.
 
 **When you add a new file (script or module), do these two things in the same change:**
@@ -131,7 +145,7 @@ Package is installed editable: `import sharp.io` works anywhere.
 
 | Module / Script | Responsibility | Tests |
 |---|---|---|
-| `sharp/config.py` | Paths, `EmbeddingConfig`, `EvaluateConfig` | — |
+| `sharp/config.py` | Paths (env-overridable), `.env` loading, `DEFAULT_DEVICE`, `EmbeddingConfig`, `EvaluateConfig` | `test_config.py` |
 | `sharp/io.py` | `ProteinRecord`, `PredictedRegion`, `KnownCluster`; FASTA r/w; parquet r/w; TSV r/w; JSON w | `test_io.py` |
 | `sharp/model_management.py` | ESM-2 registry, device selection, `residue_mean_pool`, `Embedder`, `ensure_model_available` | `test_model_management.py` |
 | `sharp/extract_embeddings.py` | Embedding extraction step: load FASTA → embed → write parquet | `test_extract_embeddings.py` |

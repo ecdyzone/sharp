@@ -42,6 +42,39 @@ Option 2: use `environment.yml`:
 conda env create -f environment.yml
 ```
 
+### Machine-specific settings (optional `.env`)
+
+Everything works out of the box with no `.env` — data is read from and written to
+`./data` and the embedding step picks its device automatically. Create one only
+when this machine differs, e.g. a server that keeps the data on a scratch disk:
+
+```bash
+cp .env.example .env
+$EDITOR .env
+```
+
+```bash
+# .env — gitignored, never committed
+SHARP_DATA_ROOT=/scratch/$USER/sharp-data   # default: <repo>/data
+SHARP_DEVICE=cpu                            # default: auto (CUDA -> MPS -> CPU)
+```
+
+Setting `SHARP_DATA_ROOT` moves `raw/`, `interim/`, `processed/` and `mock/` with
+it; override one individually with `SHARP_RAW_DIR`, `SHARP_INTERIM_DIR`,
+`SHARP_PROCESSED_DIR` or `SHARP_MOCK_DIR`. See `.env.example` for all keys.
+
+A real environment variable beats the file, so a single run can be redirected
+without editing anything:
+
+```bash
+SHARP_DEVICE=cpu pixi run python -m sharp.extract_embeddings ...
+```
+
+`.env` holds **machine identity only** — where the data lives, what hardware is
+present, and credentials once a step needs them. Pipeline parameters (thresholds,
+model choice, batch sizes) stay on the CLI so a run remains reproducible from the
+command that produced it.
+
 ## Workflow
 
 > For reproducing with conda/mamba you have to:
@@ -208,6 +241,7 @@ pixi run pytest
 
 ```bash
 .
+├── .env.example                          # template for machine-specific settings (copy to .env)
 ├── benchmarks
 ├── config
 ├── data
@@ -258,6 +292,7 @@ pixi run pytest
     │   ├── antismash_sequence.json          # trimmed real antiSMASH 8.0.4 summary
     │   ├── deepbgc_out.bgc.tsv              # real (unmodified) DeepBGC 0.1.0 output
     │   └── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
+    ├── test_config.py
     ├── test_convert_antismash.py
     ├── test_convert_deepbgc.py
     ├── test_convert_gecco.py

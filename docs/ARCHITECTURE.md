@@ -7,12 +7,37 @@ something belongs, this table is the tie-breaker.
 
 | Module | Owns | Does NOT own |
 |---|---|---|
-| `config.py` | `PROJECT_ROOT`, data dir constants, frozen config dataclasses | Any logic, I/O, or defaults that depend on runtime state |
+| `config.py` | `PROJECT_ROOT`, data dir constants, `DEFAULT_DEVICE`, `.env` loading, frozen config dataclasses | Pipeline logic, I/O beyond reading `.env`, behavioural defaults that vary at runtime |
 | `io.py` | Data types (`ProteinRecord`, `PredictedRegion`, `KnownCluster`); all disk read/write functions | Metric math, model logic, domain knowledge |
 | `model_management.py` | `MODEL_REGISTRY`, `select_device`, `ensure_model_available`, `residue_mean_pool`, `Embedder` | Batching strategy, logging, file I/O |
 | `extract_embeddings.py` | Embedding step orchestration: load FASTA → batch → embed → write | Model loading, device selection (delegates to model_management), I/O (delegates to io) |
 | `metrics.py` | Pure metric functions: `overlap_bp`, `reciprocal_overlap`, `evaluate_predictions`, `BenchmarkResult` | Any I/O, logging, or coordination |
 | `evaluate.py` | Benchmark step orchestration: load → evaluate → write | Metric math (delegates to metrics), I/O (delegates to io) |
+
+### Machine-specific configuration (`.env`)
+
+`config.py` resolves its data-dir constants and `DEFAULT_DEVICE` from the
+environment at import time, seeded by an optional `.env` at the project root
+(gitignored; `.env.example` is the committed template). This exists so the same
+checkout runs unmodified on a laptop and on a server where the data lives on a
+different filesystem.
+
+The boundary is **machine identity vs. pipeline behaviour**:
+
+| Goes in `.env` | Stays in dataclass defaults / CLI |
+|---|---|
+| `SHARP_DATA_ROOT` and the four dir overrides | `min_overlap_frac`, `batch_size`, `max_length` |
+| `SHARP_DEVICE` (hardware that's physically present) | `model_name` (a modelling choice) |
+| Credentials, once a step needs one | Anything that changes what a run *means* |
+
+Rationale: a benchmark number has to be reproducible from its command line. If a
+threshold could come from an unversioned file, two machines could report
+different numbers for the same command — so behavioural knobs never move into the
+environment. Precedence is real env var → `.env` → in-repo default, which keeps
+`SHARP_DEVICE=cpu pixi run ...` working as a one-off override.
+
+Path constants are read once at import. Tests that need different values reload
+the module under a patched environment (see `tests/test_config.py`).
 
 ### Where new things go
 
