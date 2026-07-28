@@ -5,20 +5,78 @@ Paths follow the Cookiecutter Data Science convention:
   interim/   — intermediate pipeline artifacts (between steps)
   processed/ — final consumer-facing outputs (reports, trained models)
   mock/      — synthetic data for testing
+
+Machine-specific values (where the data lives, which device to embed on) are read
+from the environment, optionally seeded by a `.env` file at the project root. This
+exists so the same checkout runs unmodified on a laptop and on a server where the
+data sits on a different filesystem. See `.env.example` for the supported keys.
+
+Scope rule: the environment carries *machine identity* only — data roots and
+device. Pipeline behaviour (thresholds, model choice, batch sizes) stays in the
+dataclass defaults below or on the CLI, so a run is reproducible from its command
+line rather than from an unversioned file.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-DATA_DIR = PROJECT_ROOT / "data"
-RAW_DIR = DATA_DIR / "raw"
-INTERIM_DIR = DATA_DIR / "interim"
-PROCESSED_DIR = DATA_DIR / "processed"
-MOCK_DIR = DATA_DIR / "mock"
+ENV_FILE = Path(os.environ.get("SHARP_ENV_FILE", PROJECT_ROOT / ".env"))
+
+
+def _load_dotenv(path: Path) -> None:
+    """Seed `os.environ` from a `.env` file, without overriding what's already set.
+
+    Real environment variables always win, so `SHARP_DATA_ROOT=... pixi run ...`
+    overrides the file for a single run. Deliberately minimal (no export
+    keyword, no quoting rules beyond stripping matched quotes) — a dependency on
+    python-dotenv is not worth it for the handful of keys we support.
+    """
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        # `${VAR}` lets .env derive one path from another (e.g. dirs from the root).
+        # Expanded against the environment as built so far, so order matters.
+        os.environ.setdefault(key, os.path.expandvars(value))
+
+
+_load_dotenv(ENV_FILE)
+
+
+def _env_path(key: str, default: Path) -> Path:
+    """Read a path from the environment, falling back to the in-repo default.
+
+    `~` is expanded so `.env` can say `~/scratch/sharp-data` on a server.
+    """
+    value = os.environ.get(key)
+    if not value or not value.strip():
+        return default
+    return Path(value.strip()).expanduser()
+
+
+DATA_DIR = _env_path("SHARP_DATA_ROOT", PROJECT_ROOT / "data")
+RAW_DIR = _env_path("SHARP_RAW_DIR", DATA_DIR / "raw")
+INTERIM_DIR = _env_path("SHARP_INTERIM_DIR", DATA_DIR / "interim")
+PROCESSED_DIR = _env_path("SHARP_PROCESSED_DIR", DATA_DIR / "processed")
+MOCK_DIR = _env_path("SHARP_MOCK_DIR", DATA_DIR / "mock")
+
+# Device for the embedding step. "auto" preserves the previous behaviour
+# (CUDA → MPS → CPU); set SHARP_DEVICE=cpu on a laptop without a usable GPU.
+DEFAULT_DEVICE = os.environ.get("SHARP_DEVICE", "auto").strip() or "auto"
 
 
 @dataclass(frozen=True)
@@ -29,7 +87,7 @@ class EmbeddingConfig:
     model_name: str = "esm2_t6_8M_UR50D"
     batch_size: int = 8
     max_length: int = 1024
-    device: str = "auto"
+    device: str = DEFAULT_DEVICE
     log_every: int = 50
 
 

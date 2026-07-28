@@ -25,7 +25,7 @@ from typing import Iterator
 import numpy as np
 import pyarrow.parquet as pq
 
-from sharp.config import EmbeddingConfig
+from sharp.config import DEFAULT_DEVICE, EmbeddingConfig
 from sharp.io import ProteinRecord, parse_fasta, write_embeddings_parquet
 from sharp.model_management import (
     MODEL_REGISTRY,
@@ -120,7 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--max-length", type=int, default=1024,
                    help="truncate proteins longer than this (residues)")
-    p.add_argument("--device", default="auto", help="auto | cpu | cuda | mps")
+    p.add_argument("--device", default=DEFAULT_DEVICE,
+                   help="auto | cpu | cuda | mps (default: %(default)s, "
+                        "from SHARP_DEVICE if set)")
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("-v", "--verbose", action="store_true")
     return p
