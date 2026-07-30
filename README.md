@@ -208,6 +208,24 @@ pixi run python -m sharp.evaluate \
     --output data/processed/benchmark_deepbgc.json
 ```
 
+On a Slurm cluster, `scripts/run_deepbgc.sbatch` wraps that pipeline call with
+explicit paths and a preflight check. Paths are set at the top of the file — edit
+them for your machine:
+
+```bash
+sbatch scripts/run_deepbgc.sbatch                    # benchmark genome
+sbatch scripts/run_deepbgc.sbatch /path/to/other.fasta
+
+squeue -u $USER
+tail -f deepbgc-scoe-<jobid>.out
+```
+
+It requests CPU only, and no GPU: DeepBGC is Prodigal → `hmmscan` vs Pfam (both
+CPU-bound, and together the bulk of the runtime) → a small Keras classifier.
+Only that last stage could use a GPU and it is a rounding error in the total, so
+a GPU allocation would sit idle — leave the GPU nodes for the ESM-2 embedding
+step.
+
 GECCO too — its `start`/`end` are 1-based inclusive (the one baseline tool that
 needs a coordinate conversion), which the converter applies automatically:
 
@@ -349,7 +367,8 @@ pixi run pytest
 │   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
 │   ├── setup_deepbgc.sh
-│   └── setup_gecco.sh
+│   ├── setup_gecco.sh
+│   └── run_deepbgc.sbatch                # Slurm job: DeepBGC on the benchmark genome (CPU, n01)
 ├── src
 │   └── sharp
 │       ├── __init__.py
