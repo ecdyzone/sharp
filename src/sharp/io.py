@@ -219,21 +219,37 @@ GROUND_TRUTH_COLUMNS = ["cluster_id", "contig", "start", "end", "class"]
 
 def load_ground_truth_tsv(path: Path) -> list[KnownCluster]:
     """Read a ground truth TSV. Required columns: cluster_id, contig, start,
-    end. Optional: class. Extra columns are ignored."""
+    end. Optional: class. Extra columns are ignored.
+
+    Rows with a degenerate interval (`end <= start`) are skipped with a warning.
+    A zero- or negative-length cluster can never be matched and silently drags
+    every recall number down, so it is dropped at the door rather than counted.
+    """
     out: list[KnownCluster] = []
-    with path.open() as fh:
+    n_degenerate = 0
+    with Path(path).open() as fh:
         reader = csv.DictReader(fh, delimiter="\t")
         missing = {"cluster_id", "contig", "start", "end"} - set(reader.fieldnames or [])
         if missing:
             raise ValueError(f"ground truth TSV missing columns: {sorted(missing)}")
         for row in reader:
+            start, end = int(row["start"]), int(row["end"])
+            if end <= start:
+                n_degenerate += 1
+                LOG.warning(
+                    "skip %s — degenerate interval [%d, %d)",
+                    row["cluster_id"], start, end,
+                )
+                continue
             out.append(KnownCluster(
                 cluster_id=row["cluster_id"],
                 contig=row["contig"],
-                start=int(row["start"]),
-                end=int(row["end"]),
+                start=start,
+                end=end,
                 cluster_class=row.get("class") or None,
             ))
+    if n_degenerate:
+        LOG.warning("%d ground-truth rows dropped for degenerate coordinates", n_degenerate)
     return out
 
 
@@ -252,6 +268,29 @@ def write_ground_truth_tsv(path: Path, clusters: list[KnownCluster]) -> int:
                 "class":      c.cluster_class or "",
             })
     return len(clusters)
+
+
+# ────────────────────────────── contig scope list ──────────────────────────
+
+def load_contigs(path: Path) -> set[str]:
+    """Read the set of contigs a tool was actually run on.
+
+    This is the denominator of recall: ground-truth clusters on contigs that
+    were never analyzed cannot be found and must not be counted as missed.
+
+    Accepts either one contig name per line, or any tab-delimited file whose
+    first field is the contig name — so a samtools `.fai` index, or the first
+    two columns of a genome file, can be passed unmodified. Blank lines and
+    `#` comments are ignored.
+    """
+    contigs: set[str] = set()
+    with Path(path).open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            contigs.add(line.split("\t")[0].strip())
+    return contigs
 
 
 # ────────────────────────────── JSON (benchmark) ───────────────────────────
