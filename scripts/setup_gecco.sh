@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install to ~/.local/src
-INSTALL_DIR="${HOME}/.local/src"
+# Install dir comes from `.env` (see .env.example); fall back if unset.
+# GECCO ships its models in the conda package, so there is no database download.
+source "$(dirname "${BASH_SOURCE[0]}")/_load_env.sh"
+: "${TOOLS_INSTALL_DIR:=$HOME/.local/src}"
+
+INSTALL_DIR="$TOOLS_INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install to ~/.local/src
-INSTALL_DIR="${HOME}/.local/src"
+# Install and database dirs come from `.env` (see .env.example); fall back if unset.
+source "$(dirname "${BASH_SOURCE[0]}")/_load_env.sh"
+: "${TOOLS_INSTALL_DIR:=$HOME/.local/src}"
+: "${ANTISMASH_DOWNLOADS_DIR:=$HOME/.local/share/antismash/databases}"
+
+INSTALL_DIR="$TOOLS_INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
@@ -20,8 +24,8 @@ pixi install
 
 echo "antiSMASH installation complete at $INSTALL_DIR/antismash"
 echo ""
-echo "Downloading antiSMASH databases (10GB)..."
-pixi run download-antismash-databases --database-dir ~/.local/share/antismash/databases
+echo "Downloading antiSMASH databases (10GB) to $ANTISMASH_DOWNLOADS_DIR ..."
+pixi run download-antismash-databases --database-dir "$ANTISMASH_DOWNLOADS_DIR"
 
 echo ""
 echo "Run antiSMASH from its own env, e.g.:"
