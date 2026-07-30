@@ -1,0 +1,6 @@
+outs:
+- md5: df983fd10c2b836fa194b51771dd45aa.dir
+  size: 35718
+  nfiles: 3
+  hash: md5
+  path: mock
