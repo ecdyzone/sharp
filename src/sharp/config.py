@@ -93,8 +93,30 @@ class EmbeddingConfig:
 
 @dataclass(frozen=True)
 class EvaluateConfig:
-    """Configuration for the benchmark / evaluation step."""
+    """Configuration for the benchmark / evaluation step.
+
+    Every knob here changes what a benchmark number *means*, so all of them stay
+    on the CLI and out of `.env` (see the scope rule above): the same command
+    line must reproduce the same numbers on any machine.
+
+    contigs_path        — contigs the tool was actually run on. None infers the
+                          scope from the predictions and warns; see evaluate.py.
+    min_cluster_frac    — fraction of a cluster that must be covered to count it
+                          as found.
+    min_prediction_frac — fraction of a prediction that must be covered for it to
+                          count as tightly bounded. 0.0 leaves detection and
+                          boundary accuracy as separate questions.
+    reciprocal_frac     — threshold for the strict symmetric rule reported
+                          alongside the asymmetric one.
+    min_p_bgc           — drop predictions scoring below this before scoring.
+    max_listed_ids      — cap on each id list in benchmark.json; 0 = unlimited.
+    """
     predictions_path: Path
     ground_truth_path: Path
     output_path: Path
-    min_overlap_frac: float = 0.5
+    contigs_path: Path | None = None
+    min_cluster_frac: float = 0.5
+    min_prediction_frac: float = 0.0
+    reciprocal_frac: float = 0.5
+    min_p_bgc: float = 0.0
+    max_listed_ids: int = 1000
