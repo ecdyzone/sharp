@@ -158,6 +158,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
 | `scripts/convert_gecco_to_parquet.py` | GECCO `.clusters.tsv` → `predictions.parquet`; `start-1` coord conversion; `--inspect` mode | `test_convert_gecco.py` |
+| `scripts/download_genome.sh` | NCBI nuccore accession → `data/raw/<ACC>.fasta` + `data/interim/analyzed_contigs.txt`; defaults to `AL645882.2` | shell, no test |
 | `scripts/parquet_to_tsv.py` | Generic dump: any pipeline parquet file → TSV; list-typed columns (e.g. `embeddings.parquet`'s `embedding` vector) comma-joined per cell; `--inspect` mode | `test_parquet_to_tsv.py` |
 
 ---
@@ -449,6 +450,12 @@ header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p
 ### Running a full comparison
 
 ```bash
+# Fetch the benchmark genome and its --contigs scope file in one step.
+# Default accession AL645882.2 = S. coelicolor A3(2), 15 coordinate-resolved
+# MiBIG clusters (the most of any contig). Writes data/raw/AL645882.2.fasta
+# and data/interim/analyzed_contigs.txt.
+scripts/download_genome.sh
+
 # Build ground truth
 python scripts/prepare_mibig_ground_truth.py \
     --input-dir data/raw/mibig_json_4.0 \
@@ -471,7 +478,9 @@ python scripts/convert_gecco_to_parquet.py \
 # Evaluate all against the same ground truth AND the same scope.
 # --contigs lists the contigs the tools were run on (one per line, or a .fai);
 # every tool must get the same file or the recall denominators differ.
-grep '^>' <genome.fasta> | cut -c2- | cut -d' ' -f1 > data/interim/analyzed_contigs.txt
+# download_genome.sh already wrote analyzed_contigs.txt. For a genome obtained
+# some other way, derive it the same way:
+#   grep '^>' <genome.fasta> | cut -c2- | cut -d' ' -f1 > data/interim/analyzed_contigs.txt
 
 for tool in antismash deepbgc gecco; do
     python -m sharp.evaluate \

@@ -244,6 +244,25 @@ pixi run python scripts/parquet_to_tsv.py \
     --output data/interim/predictions.tsv
 ```
 
+### Downloading a Benchmark Genome
+
+Fetches one contig by accession from NCBI nuccore and derives the `--contigs`
+scope file alongside it. Defaults to `AL645882.2` (*S. coelicolor* A3(2)), which
+carries 15 coordinate-resolved MiBiG clusters — the most of any single contig,
+and enough for a recall number that actually varies.
+
+```bash
+# Default: S. coelicolor A3(2)
+scripts/download_genome.sh
+
+# Or any other nuccore accession
+scripts/download_genome.sh CP002993.1
+```
+
+Writes `data/raw/<ACCESSION>.fasta` and `data/interim/analyzed_contigs.txt`.
+Pass that same contigs file to **every** tool in a comparison — see the
+benchmark-scope caveat in `CLAUDE.md`.
+
 ### Preparing MiBiG Database
 
 ```bash
@@ -320,6 +339,7 @@ pixi run pytest
 │   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
 │   ├── download_bgc-atlas.sh
+│   ├── download_genome.sh                # NCBI accession -> data/raw/<ACC>.fasta + --contigs scope file
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
 │   ├── generate_mock_data.py
