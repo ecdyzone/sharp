@@ -71,6 +71,40 @@ Ordered by dependency and priority. Items within a tier can be parallelized.
   Tier 0 benchmark-comparison work is otherwise complete pending real ground
   truth + real tool runs at scale.
 
+- [x] **Redesign `sharp/metrics.py` + `sharp/evaluate.py`** ✅ 2026-07-29
+  The benchmark core dated from `08545e3` and had only ever been run against
+  `generate_mock_benchmark_data.py`. Running it on the three real converted
+  parquets (all from one run on `AL589148.1`) against
+  `streptomyces_ground_truth.tsv` exposed three defects, all now fixed:
+
+  1. **Recall denominator ignored scope.** It divided by all 430 GT clusters
+     when 429 sat on contigs the tool never saw — recall was capped at 0.002.
+     Now `--contigs` names the analyzed contigs (inferred from the predictions
+     with a loud warning if omitted, since that flatters a tool that calls less).
+  2. **Symmetric reciprocal overlap conflated detection with boundary
+     accuracy.** All three tools *fully contained* the true cluster
+     (`ov/gt_len = 1.000`), but DeepBGC's 94 kb region scored recall `0.000`
+     because it is 4.9x the cluster's length. `MatchCriterion` now splits
+     `min_cluster_frac` (found?) from `min_prediction_frac` (tightly bounded?);
+     the strict symmetric rule is still reported alongside. This reverses the
+     "add later if needed" deferral in `ARCHITECTURE.md` — the real data was the
+     trigger.
+  3. **"Precision" against an incomplete GT.** MiBIG lists 1 cluster on SCP1;
+     GECCO called 5. Reporting `precision=0.200` asserts the other 4 are wrong;
+     they are *unvalidated*. Renamed to `matched_prediction_frac` /
+     `unmatched_prediction_ids`, with no region-level `precision` field at all.
+
+  Also added: nucleotide-level and boundary metrics (which is what actually
+  separates the tools — nt precision antiSMASH `0.382` > DeepBGC `0.171` >
+  GECCO `0.128`), `--min-p-bgc`, id-list capping, contig bucketing (the old
+  `O(P*C)` sweep is ~1e9 pair tests against the full BGC Atlas GT), and a
+  contig-name-mismatch diagnostic that exits 1 instead of silently reporting
+  recall over nothing. Clean break on the `benchmark.json` schema — nothing
+  consumed it yet. Tests: `tests/test_metrics.py` (65), `tests/test_evaluate.py`
+  (44, including real-output regression fixtures for all three tools).
+
+  Post-fix, all three baselines report detection recall `1.000` on that contig.
+
 - [x] **`scripts/prepare_bgcatlas_ground_truth.py`** ✅ 2026-07-07
   Parses the BGC Atlas `complete-bgcs` dump (204,661 antiSMASH `.gbk` files, one
   region per file) → `data/raw/bgcatlas_ground_truth.tsv` (same schema as MiBIG GT).

@@ -107,8 +107,34 @@ pixi run python -m sharp.evaluate \
     --ground-truth data/mock/ground_truth.tsv \
     --output data/processed/benchmark.json
 
-# Output: precision=0.737, recall=0.700, F1=0.718 — matches the generator's prediction
+# Output: detection recall=0.700 (14/20), matched 14/19 predictions
+#         — matches the generator's --recall-rate 0.7 and 5 injected extras
 ```
+
+#### Reading `benchmark.json`
+
+| block | what it answers |
+|---|---|
+| `scope` | how much of the ground truth was evaluable; `explicit` vs `inferred` |
+| `detection` | *did the tool find the BGC?* (fraction of the cluster covered) |
+| `reciprocal` | the strict symmetric rule, reported for comparison |
+| `nucleotide` | bp-level agreement; `precision` = how much extra territory was called |
+| `boundary` | tightness of the calls, plus split/merge diagnostics |
+
+Two things the schema is deliberate about:
+
+- **Recall counts only contigs the tool was run on.** Pass `--contigs` (one name
+  per line, or a `.fai`), and give **every tool in a comparison the same file**.
+  Omitted, the scope is inferred from the predictions and a warning is logged —
+  that is optimistic, because a contig analyzed but not called on drops out of
+  the denominator.
+- **Unmatched is not false.** Ground truth is incomplete by construction, so a
+  prediction with no match is unvalidated rather than wrong. The output reports
+  `matched_prediction_frac` (a lower bound on precision) and
+  `unmatched_prediction_ids` — there is no region-level `precision` field.
+
+See `docs/ARCHITECTURE.md` → "Metrics — methodological choices" for the full
+rationale.
 
 ### Competitor baselines (antiSMASH / DeepBGC / GECCO)
 
@@ -134,10 +160,17 @@ pixi run python scripts/convert_antismash_to_parquet.py --inspect <out>
 pixi run python scripts/convert_antismash_to_parquet.py \
     --input <out> --output data/interim/antismash_predictions.parquet
 
-# 4. Evaluate against the same ground truth as S(H)ARP
+# 4. List the contigs the tool was run on — the denominator of recall.
+#    Build it once from the input genome and reuse it for EVERY tool, or the
+#    recall denominators differ and the numbers stop being comparable.
+grep '^>' <genome.fasta> | cut -c2- | cut -d' ' -f1 \
+    > data/interim/analyzed_contigs.txt
+
+# 5. Evaluate against the same ground truth and scope as S(H)ARP
 pixi run python -m sharp.evaluate \
     --predictions data/interim/antismash_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
+    --contigs data/interim/analyzed_contigs.txt \
     --output data/processed/benchmark_antismash.json
 ```
 
@@ -154,6 +187,7 @@ pixi run python scripts/convert_deepbgc_to_parquet.py \
 pixi run python -m sharp.evaluate \
     --predictions data/interim/deepbgc_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
+    --contigs data/interim/analyzed_contigs.txt \
     --output data/processed/benchmark_deepbgc.json
 ```
 
@@ -171,6 +205,7 @@ pixi run python scripts/convert_gecco_to_parquet.py \
 pixi run python -m sharp.evaluate \
     --predictions data/interim/gecco_predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
+    --contigs data/interim/analyzed_contigs.txt \
     --output data/processed/benchmark_gecco.json
 ```
 
@@ -289,8 +324,12 @@ pixi run pytest
 └── tests
     ├── conftest.py
     ├── fixtures
+    │   ├── AL589148_ground_truth.tsv        # the one MiBIG cluster on AL589148.1
+    │   ├── antismash_predictions.parquet    # converted real output, benchmark regression
     │   ├── antismash_sequence.json          # trimmed real antiSMASH 8.0.4 summary
     │   ├── deepbgc_out.bgc.tsv              # real (unmodified) DeepBGC 0.1.0 output
+    │   ├── deepbgc_predictions.parquet      # converted real output, benchmark regression
+    │   ├── gecco_predictions.parquet        # converted real output, benchmark regression
     │   └── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
     ├── test_config.py
     ├── test_convert_antismash.py

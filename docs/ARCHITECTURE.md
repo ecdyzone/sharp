@@ -26,7 +26,7 @@ The boundary is **machine identity vs. pipeline behaviour**:
 
 | Goes in `.env` | Stays in dataclass defaults / CLI |
 |---|---|
-| `SHARP_DATA_ROOT` and the four dir overrides | `min_overlap_frac`, `batch_size`, `max_length` |
+| `SHARP_DATA_ROOT` and the four dir overrides | `min_cluster_frac`, `min_p_bgc`, `batch_size`, `max_length` |
 | `SHARP_DEVICE` (hardware that's physically present) | `model_name` (a modelling choice) |
 | Credentials, once a step needs one | Anything that changes what a run *means* |
 
@@ -102,31 +102,87 @@ cases defensively (return 0) but no data type should store invalid coordinates.
 
 ## Metrics — methodological choices
 
-### Match definition: reciprocal ≥50% overlap
+### Scope: recall counts only contigs that were analyzed
 
-A prediction matches a known cluster iff both cover ≥50% of each other's length,
-on the same contig. Implemented in `metrics.py:reciprocal_overlap`.
+Ground truth spans a database; a run spans one assembly. Recall is measured over
+ground-truth clusters on contigs in **scope** — the contigs the tool was actually
+run on — because a cluster on a contig the tool never saw cannot be found and
+must not count as missed.
 
-Rationale for this threshold vs. alternatives:
+Pass `--contigs` (one name per line, or a `.fai`) and give **every tool in a
+comparison the same file**. Without it, scope is inferred from the contigs
+present in the predictions and a warning is logged: inferred scope is optimistic,
+since a contig that was analyzed but produced no prediction silently leaves the
+denominator, which flatters a tool that calls less.
+
+*Why this is not a corner case:* on a real run of all three baselines against
+`streptomyces_ground_truth.tsv` (430 clusters / 363 contigs), the analyzed contig
+`AL589148.1` carried exactly **one** coordinate-resolved cluster. Dividing by all
+430 capped recall at 0.002 for every tool.
+
+### Match definition: asymmetric by default
+
+`MatchCriterion` has two knobs, and they answer different questions:
+
+| knob | question | default |
+|---|---|---|
+| `min_cluster_frac` | *Did the tool find this BGC?* — fraction of the **cluster** covered | `0.5` |
+| `min_prediction_frac` | *Did it bound the BGC tightly?* — fraction of the **prediction** covered | `0.0` (off) |
+
+Setting both to the same value reproduces the symmetric reciprocal rule, which is
+still computed and reported alongside under `reciprocal_frac`
+(`metrics.py:reciprocal_overlap` survives for labelling in `train.py`).
+
+This **reverses** the earlier decision to defer asymmetric thresholds as "two
+knobs instead of one; add later if needed". The trigger: DeepBGC called a 94 kb
+region that covered **100%** of a 19 kb true cluster, and the symmetric rule
+scored it recall `0.000` — reporting "not found" when only the bounds were loose.
+Fusing detection and boundary accuracy into one pass/fail hides which of the two
+actually failed, and penalizes tools that call wide regions on an axis that has
+nothing to do with whether they found anything.
+
+Boundary accuracy is not discarded — it moves to where it can be read directly:
+`nucleotide.precision` and `boundary.median_prediction_coverage`. On the same
+real run these order the tools as antiSMASH `0.382` > DeepBGC `0.171` >
+GECCO `0.128`, i.e. by how much extra territory each calls.
+
+Alternatives still rejected:
 - **Any overlap**: too lenient — a 100 kb prediction touching a 10 kb cluster by 1 bp "matches"
-- **Asymmetric (e.g. ≥50% of cluster covered for recall, ≥50% of prediction for precision)**: more expressive but two knobs instead of one; add later if needed
-- **Jaccard**: equivalent ranking, less intuitive threshold
+- **Jaccard as the match rule**: equivalent ranking, less intuitive threshold (it *is* reported, as a bp-level summary)
 
 ### Recovery semantics: set-based, per unique cluster
 
 A cluster is **recovered** if ≥1 prediction matches it (not all predictions).
-A prediction is a **TP** if it matches ≥1 cluster.
-Precision = |TP predictions| / |all predictions|.
-Recall = |recovered clusters| / |all clusters|.
+Recall = |recovered clusters in scope| / |clusters in scope|.
 
-This means two overlapping predictions that together cover a cluster do NOT
-count as recovery unless at least one of them individually passes the threshold.
-Finding a BGC means finding it as a unit.
+Two overlapping predictions that together cover a cluster do NOT count as
+recovery unless at least one of them individually passes the threshold. **Finding
+a BGC means finding it as a unit** — this is unchanged. Such clusters are counted
+in `boundary.n_clusters_recovered_by_union_only` so a tool that habitually splits
+clusters is visible rather than silently penalized.
 
-### `min_overlap_frac` is recorded in every `benchmark.json`
+### Unmatched is not false — there is no region-level "precision"
 
-A benchmark number without its threshold is uninterpretable. The field
-`min_overlap_frac` is always written to the JSON output.
+MiBIG is deliberately incomplete: ~53% of *Streptomyces* entries are dropped for
+missing coordinates (see CLAUDE.md), so **absence from the ground truth carries no
+information**. A prediction with no match is *unvalidated*, not wrong.
+
+So the output reports `matched_prediction_frac` and `unmatched_prediction_ids` —
+never `precision` or `false_positive_prediction_ids` at region level. Treat
+`matched_prediction_frac` as a lower bound on precision. Nucleotide-level
+`precision` keeps its name because there it is a plain bp ratio, not a claim
+about correctness.
+
+*Concretely:* GECCO called 5 regions on `AL589148.1` where MiBIG knows of 1. The
+old schema reported `precision=0.200`, asserting the other four were wrong.
+
+### The criterion is recorded in every `benchmark.json`
+
+A benchmark number without its thresholds is uninterpretable. Every run writes
+`criterion` (both fracs), `reciprocal_frac`, and the full `scope` block —
+including `n_clusters_total` beside `n_clusters_in_scope`, so how much of the
+ground truth was excluded is always visible — plus `min_p_bgc`, the score cutoff
+applied before scoring.
 
 ---
 

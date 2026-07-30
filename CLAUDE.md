@@ -117,7 +117,7 @@ Package is installed editable: `import sharp.io` works anywhere.
 
 | Belongs in `.env` | Never in `.env` |
 |---|---|
-| `SHARP_DATA_ROOT` (+ `SHARP_{RAW,INTERIM,PROCESSED,MOCK}_DIR`) | Thresholds (`min_overlap_frac`, e-value cutoffs) |
+| `SHARP_DATA_ROOT` (+ `SHARP_{RAW,INTERIM,PROCESSED,MOCK}_DIR`) | Thresholds (`min_cluster_frac`, `min_p_bgc`, e-value cutoffs) |
 | `SHARP_DEVICE` — hardware physically present | `model_name`, `batch_size`, `max_length` |
 | Credentials, once a step actually needs one | Anything that changes what a run *means* |
 
@@ -149,8 +149,8 @@ Paths are resolved once at import, so tests that need different values reload th
 | `sharp/io.py` | `ProteinRecord`, `PredictedRegion`, `KnownCluster`; FASTA r/w; parquet r/w; TSV r/w; JSON w | `test_io.py` |
 | `sharp/model_management.py` | ESM-2 registry, device selection, `residue_mean_pool`, `Embedder`, `ensure_model_available` | `test_model_management.py` |
 | `sharp/extract_embeddings.py` | Embedding extraction step: load FASTA → embed → write parquet | `test_extract_embeddings.py` |
-| `sharp/metrics.py` | `overlap_bp`, `reciprocal_overlap`, `evaluate_predictions`, `BenchmarkResult` | `test_metrics.py` |
-| `sharp/evaluate.py` | Benchmark step: load predictions + GT → compute metrics → write JSON | `test_evaluate.py` |
+| `sharp/metrics.py` | `overlap_bp`, `merge_intervals`, `covered_bp`, `matches`, `reciprocal_overlap`, `MatchCriterion`, `evaluate_predictions`, `BenchmarkResult` | `test_metrics.py` |
+| `sharp/evaluate.py` | Benchmark step: load predictions + GT (+ optional `--contigs` scope) → compute metrics → write JSON | `test_evaluate.py` |
 | `scripts/generate_mock_data.py` | Synthetic proteins → FASTA (for embedding step smoke tests) | `test_generate_mock_data.py` |
 | `scripts/generate_mock_benchmark_data.py` | Synthetic predictions + GT with controlled overlap (for benchmark smoke tests) | `test_evaluate.py` (integration) |
 | `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode | `test_prepare_mibig.py` |
@@ -265,6 +265,17 @@ gets one conversion script in `scripts/`.
 |---|---|---|
 | MiBIG 4.0 | ✅ Manually curated | Primary — always use |
 | BGC Atlas | ⚠️ Computationally predicted, no manual curation | Secondary — noisier, interpret separately |
+
+**Benchmark scope caveat (verified 2026-07-29).** Recall is measured only over
+ground-truth clusters on contigs the tool was actually run on — `evaluate.py`
+takes `--contigs` for this. Ground truth spans a database while a run spans one
+assembly, so without scoping, recall is capped by the ratio between them: on a
+real run of all three baselines against `streptomyces_ground_truth.tsv` (430
+clusters / 363 contigs), the analyzed contig `AL589148.1` carried exactly **one**
+coordinate-resolved cluster, and every tool scored recall ≤ 0.002. **Pass the same
+`--contigs` file to every tool in a comparison** — omitted, the scope is inferred
+from the predictions, which is optimistic (a contig analyzed but not called on
+drops out of the denominator) and logs a warning.
 
 BGC Atlas results should be reported with a caveat in any paper/presentation:
 benchmark numbers on BGC Atlas are optimistic by nature (the positive labels are
@@ -439,27 +450,39 @@ python scripts/convert_gecco_to_parquet.py \
     --input <gecco .clusters.tsv> \
     --output data/interim/gecco_predictions.parquet
 
-# Evaluate all against the same ground truth
-python -m sharp.evaluate \
-    --predictions data/interim/antismash_predictions.parquet \
-    --ground-truth data/raw/mibig_ground_truth.tsv \
-    --output data/processed/benchmark_antismash.json
+# Evaluate all against the same ground truth AND the same scope.
+# --contigs lists the contigs the tools were run on (one per line, or a .fai);
+# every tool must get the same file or the recall denominators differ.
+grep '^>' <genome.fasta> | cut -c2- | cut -d' ' -f1 > data/interim/analyzed_contigs.txt
 
-python -m sharp.evaluate \
-    --predictions data/interim/deepbgc_predictions.parquet \
-    --ground-truth data/raw/mibig_ground_truth.tsv \
-    --output data/processed/benchmark_deepbgc.json
-
-python -m sharp.evaluate \
-    --predictions data/interim/gecco_predictions.parquet \
-    --ground-truth data/raw/mibig_ground_truth.tsv \
-    --output data/processed/benchmark_gecco.json
+for tool in antismash deepbgc gecco; do
+    python -m sharp.evaluate \
+        --predictions data/interim/${tool}_predictions.parquet \
+        --ground-truth data/raw/mibig_ground_truth.tsv \
+        --contigs data/interim/analyzed_contigs.txt \
+        --output data/processed/benchmark_${tool}.json
+done
 
 python -m sharp.evaluate \
     --predictions data/interim/predictions.parquet \
     --ground-truth data/raw/mibig_ground_truth.tsv \
+    --contigs data/interim/analyzed_contigs.txt \
     --output data/processed/benchmark_sharp.json
 ```
+
+Reading the output (`benchmark.json`, see `docs/ARCHITECTURE.md` → "Metrics"):
+
+| block | what it answers |
+|---|---|
+| `scope` | how much of the ground truth was evaluable, and whether scope was `explicit` or `inferred` |
+| `detection` | *did the tool find the BGC?* — `min_cluster_frac` only |
+| `reciprocal` | the strict symmetric rule, for comparison |
+| `nucleotide` | bp-level agreement; `precision` says how much extra territory was called |
+| `boundary` | `median_prediction_coverage` (tightness), split/merge diagnostics |
+
+`matched_prediction_frac` is a **lower bound** on precision, not precision — the
+ground truth is incomplete, so an unmatched prediction is unvalidated rather than
+wrong. There is deliberately no region-level `precision` or `false_positive` field.
 
 ---
 
@@ -506,6 +529,8 @@ pixi run python -m sharp.evaluate \
     --predictions data/mock/predictions.parquet \
     --ground-truth data/mock/ground_truth.tsv \
     --output data/processed/benchmark.json
+# → detection recall=0.700 (14/20), matched 14/19 predictions — matches the
+#   generator's --recall-rate 0.7 and 5 injected unmatched predictions
 
 # Verify MiBIG 4.0 JSON schema (do once after download)
 pixi run python scripts/prepare_mibig_ground_truth.py \
