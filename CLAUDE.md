@@ -305,6 +305,24 @@ install into their own isolated pixi env under `~/.local/src/<tool>/` (via
 must stay isolated. You run each tool yourself (its own env, or HPC, or a
 container); S(H)ARP only parses the *output files* it leaves behind.
 
+**Setup scripts and `.env`.** All three `setup_<tool>.sh` scripts source
+`scripts/_load_env.sh` (sourced, not executed) to read their write locations from
+`.env`: `TOOLS_INSTALL_DIR` (where the per-tool pixi envs go, formerly a hardcoded
+`~/.local/src` repeated in all three) and, for antiSMASH/DeepBGC,
+`ANTISMASH_DOWNLOADS_DIR` / `DEEPBGC_DOWNLOADS_DIR` for the ~10GB / ~3GB reference
+databases. The helper uses `set -a` so the values are exported — DeepBGC has no
+path flag and reads `DEEPBGC_DOWNLOADS_DIR` from the environment itself; each
+script also applies a `: "${VAR:=default}"` fallback so it works with no `.env`.
+Note the README's `cd ~/.local/src/<tool>` examples assume the default
+`TOOLS_INSTALL_DIR`; the scripts' closing `echo`s interpolate the real value.
+These two keys are the exception to the "no shell expansion" rule for `.env`: they
+use `${DATABASES:-$HOME/.local/share}`, which bash resolves when sourcing but
+`config.py`'s minimal parser does not (`os.path.expandvars` has no `:-` support,
+so Python sees the literal string — inert, since no Python step reads them).
+`DATABASES` is intentionally *not* defined in `.env.example`: the server exports
+it, a laptop falls back to `~/.local/share`, so neither machine needs an edit.
+Keep shell-only keys in that block and `SHARP_*` keys — read by Python — above it.
+
 So each baseline gets one **converter** script (not a subprocess wrapper):
 
 ```

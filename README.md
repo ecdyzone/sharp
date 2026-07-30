@@ -143,6 +143,23 @@ installs into its own isolated pixi env via `scripts/setup_<tool>.sh`. You run
 the tool yourself, then convert its output to `predictions.parquet` and evaluate
 it exactly like S(H)ARP's own predictions.
 
+All three locations the setup scripts write to are set in `.env` (see
+`.env.example`), so a laptop and a server can differ without editing a tracked
+file. Defaults apply when `.env` is absent, and each script echoes the paths it
+resolved:
+
+| Key | Default | What |
+|---|---|---|
+| `TOOLS_INSTALL_DIR` | `~/.local/src` | one isolated pixi env per tool |
+| `ANTISMASH_DOWNLOADS_DIR` | `${DATABASES:-~/.local/share}/antismash/databases` | ~10GB reference data |
+| `DEEPBGC_DOWNLOADS_DIR` | `${DATABASES:-~/.local/share}/deepbgc/data` | ~3GB models + Pfam |
+
+The database dirs follow `$DATABASES` when the machine exports it (as the server
+does) and fall back to `~/.local/share` otherwise, so neither machine normally
+needs an edit. The `cd ~/.local/src/<tool>` commands below assume the default
+`TOOLS_INSTALL_DIR` — if you override it, use the path the setup script prints
+when it finishes.
+
 ```bash
 # 1. Install a baseline into its own env (~/.local/src/<tool>/), one-time
 bash scripts/setup_antismash.sh
@@ -309,6 +326,7 @@ pixi run pytest
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
+│   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
 │   ├── setup_deepbgc.sh
 │   └── setup_gecco.sh
