@@ -158,6 +158,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
 | `scripts/convert_gecco_to_parquet.py` | GECCO `.clusters.tsv` → `predictions.parquet`; `start-1` coord conversion; `--inspect` mode | `test_convert_gecco.py` |
+| `scripts/run_antismash.sbatch` | Slurm job: antiSMASH on the benchmark genome. CPU-only like DeepBGC, but takes `--cpus` and parallelises its analysis modules, so it gets a wider allocation. Paths are explicit at the top of the file | shell, no test |
 | `scripts/run_deepbgc.sbatch` | Slurm job: DeepBGC on the benchmark genome. CPU-only on a GPU-free node (Prodigal + hmmscan dominate; the Keras stage is negligible, and the `python=3.7` env predates CUDA-capable TF). Paths are explicit at the top of the file | shell, no test |
 | `scripts/download_genome.sh` | NCBI nuccore accession → `data/raw/<ACC>.fasta` + `data/interim/analyzed_contigs.txt`; defaults to `AL645882.2` | shell, no test |
 | `scripts/parquet_to_tsv.py` | Generic dump: any pipeline parquet file → TSV; list-typed columns (e.g. `embeddings.parquet`'s `embedding` vector) comma-joined per cell; `--inspect` mode | `test_parquet_to_tsv.py` |

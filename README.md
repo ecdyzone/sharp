@@ -191,6 +191,19 @@ pixi run python -m sharp.evaluate \
     --output data/processed/benchmark_antismash.json
 ```
 
+On a Slurm cluster, `scripts/run_antismash.sbatch` wraps step 3 with explicit
+paths and a preflight check. Paths are set at the top of the file — edit them for
+your machine:
+
+```bash
+sbatch scripts/run_antismash.sbatch                    # benchmark genome
+sbatch scripts/run_antismash.sbatch /path/to/other.fasta
+```
+
+CPU-only (antiSMASH has no GPU code path), but it accepts `--cpus` and
+parallelises its analysis modules, so it gets a wider allocation than the
+DeepBGC job below.
+
 DeepBGC follows the same shape — the tool runs in its own env, S(H)ARP only parses `<prefix>.bgc.tsv`:
 
 ```bash
@@ -368,6 +381,7 @@ pixi run pytest
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
 │   ├── setup_deepbgc.sh
 │   ├── setup_gecco.sh
+│   ├── run_antismash.sbatch              # Slurm job: antiSMASH on the benchmark genome (CPU, n01)
 │   └── run_deepbgc.sbatch                # Slurm job: DeepBGC on the benchmark genome (CPU, n01)
 ├── src
 │   └── sharp
