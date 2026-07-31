@@ -20,19 +20,32 @@
 # GPU code path at all, so as with DeepBGC there is nothing for an L40S or A30
 # to do here -- leave the GPU nodes for the ESM-2 embedding step.
 #
-# Unlike DeepBGC, antiSMASH takes an explicit `--cpus` and parallelises its
-# analysis modules across it, so a wider allocation genuinely helps. 16 is a
-# reasonable point on the curve for a single 8.7 Mb chromosome; the ClusterBlast
-# stage is also I/O-heavy against the 10 GB database, so returns flatten well
-# before the node's 64 threads.
+# ── Sizing, partly measured ─────────────────────────────────────────────────
+# UNMEASURED for antiSMASH -- run `seff <jobid>` after the first run and tighten
+# these, the way run_deepbgc.sbatch now is.
+#
+# The cautionary tale is next door: DeepBGC was sized at 8 cores / 32G on the
+# reasoning that hmmscan would parallelise, and job 42995 came back at 0.86 cores
+# and 1.71 GB -- 10.73% CPU efficiency. Reasoning about a pipeline is not a
+# measurement.
+#
+# The case for keeping 16 cores here anyway is mechanical rather than
+# speculative: antiSMASH takes an explicit `--cpus` and hands it to its own
+# module scheduler, which DeepBGC has no equivalent of. That is an argument, not
+# evidence -- so spend one over-provisioned run to get the number, then cut hard
+# if `seff` says 10% again.
+#
+# Memory is 16G rather than the 64G first written here. ClusterBlast and HMMER
+# stream against the on-disk databases instead of loading the 10 GB into RAM, so
+# a single 8.7 Mb chromosome should land well under this.
 
 #SBATCH --job-name=antismash-scoe
 #SBATCH --partition=basic
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --time=24:00:00
+#SBATCH --mem=16G
+#SBATCH --time=12:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 

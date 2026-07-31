@@ -21,16 +21,37 @@
 # is pinned to python=3.7 (see scripts/setup_deepbgc.sh), which predates any
 # CUDA-enabled TensorFlow that could address an L40S or A30 anyway.
 #
+# Measured on job 42995: the whole pipeline is serial -- hmmscan dominates the
+# runtime as expected, but DeepBGC does not thread it. See the sizing block below.
+#
 # n01 is the only GPU-free node, so running here leaves gn01-03 for work that
 # is actually GPU-bound (the ESM-2 embedding step).
+
+# ── Sizing, measured not guessed ────────────────────────────────────────────
+# From `seff` on job 42995 (AL645882.2, 8.7 Mb, this exact script):
+#
+#   CPU Utilized:      00:27:48   (0.86 cores over the run)
+#   CPU Efficiency:    10.73% of 8 allocated cores
+#   Memory Utilized:   1.71 GB
+#   Job Wall-clock:    00:32:24
+#
+# So DeepBGC is single-threaded end to end -- it shells out to hmmscan without
+# threading it, and Prodigal is serial anyway. Seven of the original eight cores
+# sat idle. 2 cores rather than 1 only because the measured 0.86 leaves no room
+# for the interpreter's own overhead; the second core is free in practice.
+#
+# Memory and time keep deliberate headroom over the measurement (~4.5x and ~3.7x):
+# a larger genome or a Pfam-richer contig set moves both, and the cost is
+# asymmetric -- Slurm kills the job at either limit, while a modest over-ask only
+# affects queue position. Re-measure with `seff <jobid>` if the input changes.
 
 #SBATCH --job-name=deepbgc-scoe
 #SBATCH --partition=basic
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 

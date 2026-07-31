@@ -200,9 +200,10 @@ sbatch scripts/run_antismash.sbatch                    # benchmark genome
 sbatch scripts/run_antismash.sbatch /path/to/other.fasta
 ```
 
-CPU-only (antiSMASH has no GPU code path), but it accepts `--cpus` and
-parallelises its analysis modules, so it gets a wider allocation than the
-DeepBGC job below.
+CPU-only (antiSMASH has no GPU code path), but it accepts `--cpus` and hands it
+to its own module scheduler, so it keeps a wider allocation than the DeepBGC job
+below — 16 cores / 16G, **not yet measured**. Run `seff <jobid>` after the first
+run and tighten it, as was done for DeepBGC.
 
 DeepBGC follows the same shape — the tool runs in its own env, S(H)ARP only parses `<prefix>.bgc.tsv`:
 
@@ -238,6 +239,17 @@ CPU-bound, and together the bulk of the runtime) → a small Keras classifier.
 Only that last stage could use a GPU and it is a rounding error in the total, so
 a GPU allocation would sit idle — leave the GPU nodes for the ESM-2 embedding
 step.
+
+Sizing (2 cores / 8G / 2h) comes from `seff` on a real run of this script over
+`AL645882.2`: **0.86 cores, 1.71 GB, 32m24s**. Despite `hmmscan` dominating the
+runtime, DeepBGC does not thread it, so the pipeline is serial — an earlier
+8-core allocation ran at 10.73% CPU efficiency. Measure your own runs the same
+way rather than trusting these numbers on a different genome:
+
+```bash
+seff <jobid>
+sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS,ExitCode
+```
 
 GECCO too — its `start`/`end` are 1-based inclusive (the one baseline tool that
 needs a coordinate conversion), which the converter applies automatically:
