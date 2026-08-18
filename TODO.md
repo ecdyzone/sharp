@@ -12,11 +12,11 @@
       and `scripts/run_deepbgc.sbatch`. Both used the same explicit `--contigs`
       scope (`source: "explicit"`, `n_contigs: 1`, 15 clusters in scope out of
       1675 in the GT file). Results below.
-- [ ] Run **GECCO** on the same genome. antiSMASH and DeepBGC are done; GECCO is
-      missing from the comparison and there is no `scripts/run_gecco.sbatch` yet
-      — write one (mirror `run_deepbgc.sbatch`, then size it from `seff` after
-      the first run) and convert with `scripts/convert_gecco_to_parquet.py`
-      (remember: GECCO is the one tool needing `start - 1`).
+- [~] **GECCO — paused.** Not part of the `AL645882.2` comparison and no
+      `scripts/run_gecco.sbatch` exists. If it comes back: mirror
+      `run_deepbgc.sbatch`, size it from `seff` after the first run, and convert
+      with `scripts/convert_gecco_to_parquet.py` (GECCO is the one tool needing
+      `start - 1`).
 - [ ] S(H)ARP itself can't be benchmarked yet — `predict.py` and the rest of the
       pipeline (`annotate.py` → `train.py`) aren't implemented yet (see CLAUDE.md
       "What is NOT YET IMPLEMENTED").
@@ -31,7 +31,8 @@
 
 Ground truth: `data/raw/mibig_ground_truth.tsv` (all genera, 1675 clusters;
 scoping to the one contig leaves the same 15 *Streptomyces* clusters the
-genus-filtered GT would). Raw JSON: `../sharp-davinci-copy/data/processed/`.
+genus-filtered GT would). Full write-up with caveats:
+`../sharp-davinci-copy/data/processed/AL645882.2.md`; raw JSON alongside it.
 
 | | antiSMASH | DeepBGC |
 |---|---|---|
