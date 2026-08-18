@@ -457,11 +457,32 @@ header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p
 
 ### Running a full comparison
 
+**The scaled run (50 genomes, 113 clusters) is the default now** — a
+single-genome run caps the recall denominator at 16 clusters. The
+single-genome flow below still works for a smoke test; see README
+"Running the Scaled Benchmark" for the full array-job sequence.
+
 ```bash
-# Fetch the benchmark genome and its --contigs scope file in one step.
-# Default accession AL645882.2 = S. coelicolor A3(2), 15 coordinate-resolved
-# MiBIG clusters (the most of any contig). Writes data/raw/AL645882.2.fasta
-# and data/interim/analyzed_contigs.txt.
+# 1. Select the genome set from the ground truth. This is not just "sort by
+#    cluster count": ~58% of MiBIG records are BGC-only deposits (the record IS
+#    the cluster, so every tool scores ~1.0 by construction) and one physical
+#    sequence can carry several accessions (NC_003888.3 and AL645882.2 are the
+#    same S. coelicolor chromosome, with 15 clusters filed under one and 1 under
+#    the other). Emits the set, the scope file, and a contig-normalized GT.
+python scripts/select_benchmark_genomes.py \
+    --ground-truth data/raw/streptomyces_ground_truth.tsv \
+    --output-dir data/interim/benchmark_set
+
+# 2. Fetch them (resumable, ~420 Mb). By nucleotide accession, so the FASTA
+#    header IS the name the ground truth uses.
+scripts/download_benchmark_genomes.sh
+
+# 3. Run each baseline as a job array, then merge (see README), and evaluate
+#    against benchmark_ground_truth.tsv + analyzed_contigs.txt from step 1 —
+#    NOT the raw MiBIG ground truth, whose contig names are not normalized.
+
+# ── single-genome smoke test ────────────────────────────────────────────────
+# Fetch one genome and its --contigs scope file in one step.
 scripts/download_genome.sh
 
 # Build ground truth
