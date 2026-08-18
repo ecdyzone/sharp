@@ -6,21 +6,71 @@
       (`AL589148.1`, all three tools). This exposed three defects in the
       benchmark core, now fixed (see `docs/BACKLOG.md` Tier 0). Still to do at
       scale: a genome with more than one coordinate-resolved MiBIG cluster on it.
-- [ ] Re-run the comparison on a genome with real recall signal. `AL589148.1`
-      carries exactly **one** coordinate-resolved MiBIG cluster, so every recall
-      number from it is 0/1 or 1/1. Suggested: *S. coelicolor* A3(2) (AL645882.2)
-      — 15 clusters in `streptomyces_ground_truth.tsv`, the most of any contig.
-      Always pass `--contigs`, the same file for every tool.
+- [x] Re-run the comparison on a genome with real recall signal — done on
+      *S. coelicolor* A3(2) (`AL645882.2`, 15 coordinate-resolved MiBIG
+      clusters), run on the davinci server via `scripts/run_antismash.sbatch`
+      and `scripts/run_deepbgc.sbatch`. Both used the same explicit `--contigs`
+      scope (`source: "explicit"`, `n_contigs: 1`, 15 clusters in scope out of
+      1675 in the GT file). Results below.
+- [ ] Run **GECCO** on the same genome. antiSMASH and DeepBGC are done; GECCO is
+      missing from the comparison and there is no `scripts/run_gecco.sbatch` yet
+      — write one (mirror `run_deepbgc.sbatch`, then size it from `seff` after
+      the first run) and convert with `scripts/convert_gecco_to_parquet.py`
+      (remember: GECCO is the one tool needing `start - 1`).
 - [ ] S(H)ARP itself can't be benchmarked yet — `predict.py` and the rest of the
       pipeline (`annotate.py` → `train.py`) aren't implemented yet (see CLAUDE.md
       "What is NOT YET IMPLEMENTED").
-- [ ] Once real numbers exist, write them up with the MiBIG coordinate-coverage,
+- [ ] Write up the numbers below with the MiBIG coordinate-coverage,
       benchmark-scope, and BGC Atlas optimism caveats (CLAUDE.md → "Benchmark
-      comparison"). Report `detection` and `reciprocal` recall together — the gap
-      between them is the boundary-tightness story (DeepBGC 1.000 vs 0.000 on
-      SCP1), and reporting either alone is misleading.
-- [ ] Decide whether `min_prediction_frac` should be non-zero for the headline
-      table. Currently 0.0, so detection recall ignores how wide a call is; the
-      tightness signal lives in `nucleotide.precision` and
-      `boundary.median_prediction_coverage` instead. Revisit once a genome with
-      more clusters shows whether the two rankings ever disagree.
+      comparison"). Report `detection` and `reciprocal` recall together.
+- [x] Decide whether `min_prediction_frac` should be non-zero for the headline
+      table — **the two rankings do disagree**, so keep 0.0 and always report
+      both. See "Open question" below for what still needs deciding.
+
+### Results — `AL645882.2` (S. coelicolor A3(2)), 15 clusters in scope
+
+Ground truth: `data/raw/mibig_ground_truth.tsv` (all genera, 1675 clusters;
+scoping to the one contig leaves the same 15 *Streptomyces* clusters the
+genus-filtered GT would). Raw JSON: `../sharp-davinci-copy/data/processed/`.
+
+| | antiSMASH | DeepBGC |
+|---|---|---|
+| predictions in scope | 29 | 167 |
+| **detection** recall | **1.000** (15/15) | 0.733 (11/15) |
+| **reciprocal** recall | 0.267 (4/15) | **0.467** (7/15) |
+| matched prediction frac | 0.483 (14/29) | 0.060 (10/167) |
+| nucleotide recall | 0.986 | 0.897 |
+| nucleotide precision | 0.251 | 0.142 |
+| predicted bp | 1,128,277 | 1,806,162 |
+| median prediction coverage | 0.317 | 0.702 |
+| clusters recovered by union only | 0 | 0 |
+
+Reading it:
+
+- **The two recall criteria rank the tools in opposite directions.** antiSMASH
+  finds every cluster (detection 1.000) but its regions are wide — median
+  prediction coverage 0.317 means the typical matched region is ~2/3 territory
+  that isn't the cluster, so only 4/15 survive the symmetric 50% rule. DeepBGC
+  misses 4 clusters outright but its matched calls are tighter (0.702), so it
+  wins on reciprocal. Neither number alone is a fair headline; this is exactly
+  the boundary-tightness story flagged after the SCP1 run, now with n=15 instead
+  of n=1.
+- **DeepBGC's precision problem is volume, not just width.** 167 calls covering
+  1.8 Mb of an 8.7 Mb chromosome (~21%), 157 of them unmatched, many only a few
+  hundred bp. `matched_prediction_frac` 0.060 is a lower bound on precision, not
+  precision — but the gap to antiSMASH's 0.483 is large enough that the ranking
+  is unlikely to be an artefact of incomplete ground truth.
+- **Both tools recover clusters with single predictions.** `n_clusters_recovered_by_union_only`
+  is 0 for both, and each has exactly one merged prediction (a single call
+  spanning ≥2 clusters), so split/merge pathology is not driving the numbers.
+- DeepBGC's 4 misses: `BGC0000551`, `BGC0000660`, `BGC0000940`, `BGC0001181`.
+  antiSMASH missed none. Worth a look at what those four have in common before
+  the write-up.
+
+### Open question
+
+- Headline table: keep `min_prediction_frac = 0.0` (detection) as the primary
+  recall and report `reciprocal` beside it, or promote reciprocal? Now that the
+  rankings are known to disagree, this is a presentation decision for the team,
+  not a metrics bug. Recommendation: report both columns side by side and never
+  a single "recall" number.
