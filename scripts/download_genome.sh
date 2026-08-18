@@ -55,29 +55,17 @@ mkdir -p "${RAW_DIR}" "${INTERIM_DIR}"
 # shellcheck source=scripts/_load_env.sh
 source "${SCRIPT_DIR}/_load_env.sh"
 
-EFETCH_URL="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-QUERY="db=nuccore&id=${ACCESSION}&rettype=fasta&retmode=text"
-if [[ -n "${NCBI_API_KEY:-}" ]]; then
-    QUERY="${QUERY}&api_key=${NCBI_API_KEY}"
-fi
+# Fetch and validation live in _fetch_nuccore.sh, shared with the batch
+# downloader so both apply the same retry and "is this really FASTA" rules.
+# shellcheck source=scripts/_fetch_nuccore.sh
+source "${SCRIPT_DIR}/_fetch_nuccore.sh"
 
 echo "Downloading ${ACCESSION} from NCBI nuccore..."
-wget -O "${FASTA}" "${EFETCH_URL}?${QUERY}"
-
-# efetch answers HTTP 200 with an error body for a bad accession, so wget's exit
-# status proves nothing. A real FASTA starts with '>'; anything else is an error
-# page we should not leave on disk pretending to be a genome.
-if [[ ! -s "${FASTA}" ]] || [[ "$(head -c 1 "${FASTA}")" != ">" ]]; then
-    echo "ERROR: ${ACCESSION} did not return FASTA. NCBI said:" >&2
-    head -c 500 "${FASTA}" >&2
-    echo >&2
-    rm -f "${FASTA}"
-    exit 1
-fi
+fetch_nuccore "${ACCESSION}" "${FASTA}" || exit 1
 
 # The --contigs scope file: one contig id per line, matching how the tools name
 # contigs in their output (first whitespace-delimited token of the FASTA header).
-grep '^>' "${FASTA}" | cut -c2- | cut -d' ' -f1 > "${CONTIGS}"
+fasta_contig_ids "${FASTA}" > "${CONTIGS}"
 
 echo
 echo "Genome:  ${FASTA}"

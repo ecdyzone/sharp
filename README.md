@@ -352,6 +352,33 @@ Record lengths are fetched once from NCBI esummary and cached in
 queries. Accessions NCBI cannot resolve (some WGS contigs) fall back to a
 length lower bound derived from ground-truth coordinates, and are reported.
 
+### Downloading the Benchmark Genome Set
+
+Fetches every genome named by `benchmark_genomes.tsv`, one FASTA per genome.
+Resumable — an existing valid FASTA is skipped, so re-running after an
+interruption or a rate-limit failure costs nothing.
+
+```bash
+# Uses data/interim/benchmark_set/benchmark_genomes.tsv by default
+scripts/download_benchmark_genomes.sh
+
+# Or point at another set / output directory
+scripts/download_benchmark_genomes.sh path/to/set.tsv data/raw/genomes
+```
+
+Writes `data/raw/genomes/<ACCESSION>.fasta` (~420 Mb for the default 50).
+Each download is verified to start with `>` and its header checked against the
+expected accession — a mismatch there would make the genome score zero against
+the ground truth for reasons invisible in the metrics, so it is reported loudly.
+
+Genomes are fetched by **nucleotide accession** rather than read from a local
+NCBI assembly mirror. A mirror is indexed by RefSeq assembly while the ground
+truth is keyed by nucleotide accession (44 of the 50 are GenBank-style), so a
+mirror needs a GenBank→RefSeq contig-name translation whose failures are
+silent. Fetching by accession makes the FASTA header *be* the name the ground
+truth uses, and pins the benchmark to `accession.version` rather than to
+whenever the mirror was last synced.
+
 ### Preparing MiBiG Database
 
 ```bash
@@ -428,6 +455,7 @@ pixi run pytest
 │   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
 │   ├── download_bgc-atlas.sh
+│   ├── download_benchmark_genomes.sh     # benchmark set TSV -> data/raw/genomes/<ACC>.fasta (resumable)
 │   ├── download_genome.sh                # NCBI accession -> data/raw/<ACC>.fasta + --contigs scope file
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
@@ -436,6 +464,7 @@ pixi run pytest
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
 │   ├── select_benchmark_genomes.py       # ground truth -> benchmark genome set + scope + normalized GT
+│   ├── _fetch_nuccore.sh          # sourced by the downloaders: efetch + "is this really FASTA" check
 │   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
 │   ├── setup_deepbgc.sh
