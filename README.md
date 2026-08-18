@@ -424,6 +424,52 @@ Run tests with:
 pixi run pytest
 ```
 
+### Running the Scaled Benchmark
+
+Once the set is selected and downloaded, each baseline runs as a Slurm job
+array — one task per genome, so failures are isolated and resubmitting retries
+only what failed. Both array scripts skip genomes that already have output, so a
+partially-failed array can be resubmitted wholesale.
+
+```bash
+N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)
+
+# antiSMASH: 16 cores/task, so throttle to 4 concurrent. Sizing is UNMEASURED —
+# submit 1-2 first, check `seff <jobid>_<index>`, then submit the rest.
+sbatch --array=1-${N}%4 scripts/run_antismash_array.sbatch
+
+# DeepBGC: single-threaded, 2 cores/task, 8 concurrent
+sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch
+```
+
+Then collapse the per-genome outputs into one predictions file per tool:
+
+```bash
+pixi run python scripts/merge_predictions.py --tool antismash \
+    --input-dir ~/projects/antismash/out_benchmark \
+    --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+    --output data/interim/antismash_predictions.parquet
+```
+
+Pass `--contigs` here too: a genome whose run never completed produces no
+predictions but still counts in the recall denominator, so it is scored as
+though the tool looked and found nothing. `merge_predictions.py` names those
+genomes rather than letting them disappear into a lower recall number. Use
+`--inspect` to see per-genome region counts before writing.
+
+Finally, evaluate each tool against the **normalized** ground truth and the
+shared scope file:
+
+```bash
+for tool in antismash deepbgc; do
+    pixi run python -m sharp.evaluate \
+        --predictions data/interim/${tool}_predictions.parquet \
+        --ground-truth data/interim/benchmark_set/benchmark_ground_truth.tsv \
+        --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+        --output data/processed/benchmark_${tool}.json
+done
+```
+
 ## Directory Structure
 
 ```bash
@@ -459,6 +505,7 @@ pixi run pytest
 │   ├── download_genome.sh                # NCBI accession -> data/raw/<ACC>.fasta + --contigs scope file
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
+│   ├── merge_predictions.py              # per-genome tool outputs -> one predictions.parquet
 │   ├── generate_mock_data.py
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
 │   ├── prepare_bgcatlas_ground_truth.py
@@ -470,7 +517,9 @@ pixi run pytest
 │   ├── setup_deepbgc.sh
 │   ├── setup_gecco.sh
 │   ├── run_antismash.sbatch              # Slurm job: antiSMASH on the benchmark genome (CPU, n01)
-│   └── run_deepbgc.sbatch                # Slurm job: DeepBGC on the benchmark genome (CPU, n01)
+│   ├── run_antismash_array.sbatch        # same, as a Slurm job array over the benchmark set
+│   ├── run_deepbgc.sbatch                # Slurm job: DeepBGC on the benchmark genome (CPU, n01)
+│   └── run_deepbgc_array.sbatch          # same, as a Slurm job array over the benchmark set
 ├── src
 │   └── sharp
 │       ├── __init__.py
@@ -498,6 +547,7 @@ pixi run pytest
     ├── test_extract_embeddings.py
     ├── test_generate_mock_data.py
     ├── test_io.py
+    ├── test_merge_predictions.py
     ├── test_metrics.py
     ├── test_model_management.py
     ├── test_parquet_to_tsv.py
