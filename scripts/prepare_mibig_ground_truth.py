@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,55 @@ def get_locus_coords(locus: dict[str, Any]) -> tuple[str | None, int | None, int
     return contig, start, end
 
 
+# ══════════════════════════════ VALIDATION ═════════════════════════════════
+# MiBIG's `loci[].accession` field is free-form and, in 4.0, is not always a
+# nucleotide accession. Verified against the real 4.0 dump (2026-08-18): the
+# Streptomyces ground truth contained 11 rows that no coordinate benchmark can
+# use, and they fail *silently* — an unresolvable accession simply never matches
+# a contig in the analyzed genome, so the cluster is dropped from the recall
+# denominator by `evaluate.py`'s scope filter (or trips its contig-mismatch
+# diagnostic, which exits 1). Reject them loudly here instead.
+#
+# Observed categories, with the real offenders:
+#   protein accession      WP_071967254.1  (BGC0003020, span 244 bp)
+#   assembly accession     GCA_028752555, GCA_000719695.1, ASM2282770v1
+#   WGS master accession   NZ_JOGD01000000, NZ_LLZK01000000 — these address a
+#                          whole WGS project, not a sequence; the real contigs
+#                          are ...01000001, ...01000002, and so on.
+#   degenerate span        GCA_000719695.1 0..2 (2 bp), CP021118.1 (188 bp)
+#
+# Note the underscore in the protein pattern: it is what separates a RefSeq
+# protein (WP_, NP_, YP_) from a perfectly valid INSDC nucleotide accession
+# such as AP009493.1 (DDBJ, S. griseus) — do not drop the underscore.
+# ════════════════════════════════════════════════════════════════════════════
+
+#: Loci shorter than this are not clusters — they are annotation artifacts.
+#: The smallest genuine BGC locus in MiBIG 4.0 Streptomyces is ~945 bp
+#: (BGC0000848), so 500 bp rejects junk without touching real entries.
+MIN_LOCUS_SPAN = 500
+
+_RE_PROTEIN = re.compile(r"^(?:WP|NP|YP|XP|AP|ZP)_", re.I)
+_RE_ASSEMBLY = re.compile(r"^(?:GCA_|GCF_|ASM\d+v\d+$)", re.I)
+_RE_WGS_MASTER = re.compile(r"^(?:NZ_)?[A-Z]{4,6}\d{2}0{6}$", re.I)
+
+
+def rejection_reason(contig: str, start: int, end: int) -> str | None:
+    """Return why this locus is unusable for a coordinate benchmark, or None
+    if it is fine. Pure — no I/O, no logging."""
+    bare = contig.strip()
+    if not bare:
+        return "empty accession"
+    if _RE_PROTEIN.match(bare):
+        return "protein accession"
+    if _RE_ASSEMBLY.match(bare):
+        return "assembly accession"
+    if _RE_WGS_MASTER.match(bare):
+        return "WGS master accession"
+    if end - start < MIN_LOCUS_SPAN:
+        return f"degenerate span (<{MIN_LOCUS_SPAN} bp)"
+    return None
+
+
 # ══════════════════════════════ parsing ════════════════════════════════════
 
 def entry_to_clusters(
@@ -251,6 +301,7 @@ def build_ground_truth(
     clusters: list[KnownCluster] = []
     n_no_coords = 0
     n_filtered_genus = 0
+    rejected: dict[str, list[str]] = {}
     for entry, fname in entries:
         if genus is not None:
             tax = get_taxonomy_name(entry) or ""
@@ -260,13 +311,43 @@ def build_ground_truth(
         rows = entry_to_clusters(entry, fname)
         if not rows:
             n_no_coords += 1
-        clusters.extend(rows)
+        for c in rows:
+            reason = rejection_reason(c.contig, c.start, c.end)
+            if reason is not None:
+                rejected.setdefault(reason, []).append(f"{c.cluster_id} ({c.contig})")
+                continue
+            clusters.append(c)
+
+    # Collapse duplicate loci: MiBIG sometimes files the same physical interval
+    # under two cluster ids (e.g. BGC0002850 and BGC0002868 both at
+    # OR050662.1:0-58983). Left in, each copy inflates the recall denominator
+    # and is counted twice against every tool. Keep the first id seen — entries
+    # are loaded in sorted filename order, so this is deterministic.
+    deduped: list[KnownCluster] = []
+    seen_loci: dict[tuple[str, int, int], str] = {}
+    n_dup = 0
+    for c in clusters:
+        key = (c.contig, c.start, c.end)
+        if key in seen_loci:
+            LOG.debug("duplicate locus %s:%d-%d — dropping %s, keeping %s",
+                      c.contig, c.start, c.end, c.cluster_id, seen_loci[key])
+            n_dup += 1
+            continue
+        seen_loci[key] = c.cluster_id
+        deduped.append(c)
+    clusters = deduped
 
     if genus is not None:
         LOG.info("genus filter %r: kept %d, skipped %d",
                  genus, len(entries) - n_filtered_genus, n_filtered_genus)
     if n_no_coords:
         LOG.warning("%d entries had no locus with usable coordinates", n_no_coords)
+    for reason, ids in sorted(rejected.items()):
+        LOG.warning("dropped %d locus/loci — %s: %s", len(ids), reason,
+                    ", ".join(ids[:5]) + (" ..." if len(ids) > 5 else ""))
+    if n_dup:
+        LOG.warning("dropped %d duplicate locus/loci (same contig+start+end "
+                    "filed under another cluster id); run with -v to list them", n_dup)
 
     n = write_ground_truth_tsv(output_path, clusters)
     LOG.info("wrote %d cluster rows → %s", n, output_path)

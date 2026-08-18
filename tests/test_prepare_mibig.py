@@ -26,6 +26,7 @@ from prepare_mibig_ground_truth import (  # noqa: E402
     get_loci,
     get_locus_coords,
     get_taxonomy_name,
+    rejection_reason,
 )
 from sharp.io import load_ground_truth_tsv  # noqa: E402
 
@@ -241,3 +242,109 @@ class TestBuildGroundTruth:
         in_dir.mkdir()
         n = build_ground_truth(in_dir, tmp_path / "gt.tsv")
         assert n == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Accession / span validation (added 2026-08-18 after the real 4.0 dump was
+# found to contain 11 loci no coordinate benchmark can score).
+# ══════════════════════════════════════════════════════════════════════════
+
+def _entry(cluster_id: str, contig: str, start: int, end: int) -> dict:
+    """Minimal 4.0-shaped entry with one locus at the given coordinates."""
+    return {
+        "accession": cluster_id,
+        "biosynthesis": {"classes": [{"class": "NRPS"}]},
+        "taxonomy": {"name": "Streptomyces coelicolor A3(2)"},
+        "loci": [{"accession": contig, "location": {"from": start, "to": end}}],
+    }
+
+
+class TestRejectionReason:
+    """Pure validation rules — the real offenders from MiBIG 4.0 by name."""
+
+    @pytest.mark.parametrize("contig", [
+        "AL645882.2",       # EMBL chromosome
+        "AP009493.1",       # DDBJ — starts with 'AP' but is NOT a protein
+        "NZ_DS999644.1",    # RefSeq scaffold
+        "JJOB01000001.1",   # WGS contig 1 (not the master record)
+        "CP114200",         # no version suffix, still usable
+    ])
+    def test_accepts_real_nucleotide_accessions(self, contig: str) -> None:
+        assert rejection_reason(contig, 0, 50_000) is None
+
+    @pytest.mark.parametrize("contig,expected", [
+        ("WP_071967254.1", "protein accession"),
+        ("NP_123456.1", "protein accession"),
+        ("GCA_028752555", "assembly accession"),
+        ("GCF_000203835.1", "assembly accession"),
+        ("ASM2282770v1", "assembly accession"),
+        ("NZ_JOGD01000000", "WGS master accession"),
+        ("NZ_LLZK01000000", "WGS master accession"),
+    ])
+    def test_rejects_unusable_accessions(self, contig: str, expected: str) -> None:
+        assert rejection_reason(contig, 0, 50_000) == expected
+
+    def test_rejects_empty_accession(self) -> None:
+        assert rejection_reason("   ", 0, 50_000) == "empty accession"
+
+    def test_rejects_degenerate_span(self) -> None:
+        reason = rejection_reason("CP021118.1", 965_781, 965_969)  # 188 bp, real
+        assert reason is not None and "degenerate span" in reason
+
+    def test_accepts_smallest_real_mibig_locus(self) -> None:
+        # BGC0000848 on AP009493.1 is 945 bp — the shortest genuine locus in
+        # the Streptomyces set. The threshold must not reject it.
+        assert rejection_reason("AP009493.1", 8_273_443, 8_274_388) is None
+
+    def test_wgs_master_rejected_but_contig_one_accepted(self) -> None:
+        # The distinction that matters: ...01000000 addresses the whole WGS
+        # project, ...01000001 is a real sequence.
+        assert rejection_reason("NZ_JOGD01000000", 0, 50_000) is not None
+        assert rejection_reason("NZ_JOGD01000001", 0, 50_000) is None
+
+
+class TestBuildGroundTruthFiltering:
+    """The validation and dedup rules as applied by build_ground_truth."""
+
+    @staticmethod
+    def _write(in_dir: Path, entries: dict) -> None:
+        for name, entry in entries.items():
+            (in_dir / name).write_text(json.dumps(entry))
+
+    def test_invalid_accessions_are_dropped(self, tmp_path: Path) -> None:
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        self._write(in_dir, {
+            "BGC0000001.json": _entry("BGC0000001", "AL645882.2", 1, 50_000),
+            "BGC0003020.json": _entry("BGC0003020", "WP_071967254.1", 1, 245),
+            "BGC0003030.json": _entry("BGC0003030", "NZ_JOGD01000000", 1, 50_000),
+            "BGC0003064.json": _entry("BGC0003064", "GCA_000719695.1", 1, 3),
+        })
+        out = tmp_path / "gt.tsv"
+        assert build_ground_truth(in_dir, out) == 1
+        assert {c.cluster_id for c in load_ground_truth_tsv(out)} == {"BGC0000001"}
+
+    def test_duplicate_loci_collapsed_keeping_first_id(self, tmp_path: Path) -> None:
+        # Real case: BGC0002850 and BGC0002868 are both OR050662.1:0-58983.
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        self._write(in_dir, {
+            "BGC0002850.json": _entry("BGC0002850", "OR050662.1", 1, 58_983),
+            "BGC0002868.json": _entry("BGC0002868", "OR050662.1", 1, 58_983),
+        })
+        out = tmp_path / "gt.tsv"
+        assert build_ground_truth(in_dir, out) == 1
+        # Sorted filename order means the lower id wins — deterministic.
+        assert {c.cluster_id for c in load_ground_truth_tsv(out)} == {"BGC0002850"}
+
+    def test_same_contig_different_interval_is_not_a_duplicate(
+        self, tmp_path: Path
+    ) -> None:
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        self._write(in_dir, {
+            "BGC0000001.json": _entry("BGC0000001", "AL645882.2", 1, 50_000),
+            "BGC0000002.json": _entry("BGC0000002", "AL645882.2", 60_000, 90_000),
+        })
+        out = tmp_path / "gt.tsv"
+        assert build_ground_truth(in_dir, out) == 2
