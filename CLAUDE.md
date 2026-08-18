@@ -153,7 +153,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `sharp/evaluate.py` | Benchmark step: load predictions + GT (+ optional `--contigs` scope) → compute metrics → write JSON | `test_evaluate.py` |
 | `scripts/generate_mock_data.py` | Synthetic proteins → FASTA (for embedding step smoke tests) | `test_generate_mock_data.py` |
 | `scripts/generate_mock_benchmark_data.py` | Synthetic predictions + GT with controlled overlap (for benchmark smoke tests) | `test_evaluate.py` (integration) |
-| `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode | `test_prepare_mibig.py` |
+| `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode; **rejects unusable accessions** (protein `WP_`/`NP_`, assembly `GCA_`/`ASMnnnvn`, WGS master `...01000000`) and spans <500 bp, and **collapses duplicate loci** filed under two cluster ids | `test_prepare_mibig.py` |
 | `scripts/prepare_bgcatlas_ground_truth.py` | BGC Atlas `.gbk` dump → `bgcatlas_ground_truth.tsv` (secondary/noisy GT) | `test_prepare_bgcatlas.py` |
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
@@ -161,6 +161,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/run_antismash.sbatch` | Slurm job: antiSMASH on the benchmark genome. CPU-only like DeepBGC, but takes `--cpus` and hands it to its own module scheduler, so it keeps a wider allocation (16 cores / 16G) **pending its own `seff` measurement**. Paths are explicit at the top of the file | shell, no test |
 | `scripts/run_deepbgc.sbatch` | Slurm job: DeepBGC on the benchmark genome. CPU-only on a GPU-free node (the `python=3.7` env predates CUDA-capable TF). Sized from `seff` on job 42995: 0.86 cores, 1.71 GB, 32 min → 2 cores / 8G / 2h. hmmscan dominates the runtime but DeepBGC does not thread it, so the pipeline is serial. Paths are explicit at the top of the file | shell, no test |
 | `scripts/download_genome.sh` | NCBI nuccore accession → `data/raw/<ACC>.fasta` + `data/interim/analyzed_contigs.txt`; defaults to `AL645882.2` | shell, no test |
+| `scripts/select_benchmark_genomes.py` | Ground truth → benchmark genome set: drops BGC-only deposits (`--min-length`), merges RefSeq/GenBank twins, ranks, and emits `benchmark_genomes.tsv` + `analyzed_contigs.txt` + `benchmark_ground_truth.tsv` (contigs normalized onto the primary accession). NCBI lengths cached in `data/interim/record_lengths.tsv`; `--inspect`/`--offline` modes | `test_select_benchmark_genomes.py` |
 | `scripts/parquet_to_tsv.py` | Generic dump: any pipeline parquet file → TSV; list-typed columns (e.g. `embeddings.parquet`'s `embedding` vector) comma-joined per cell; `--inspect` mode | `test_parquet_to_tsv.py` |
 
 ---

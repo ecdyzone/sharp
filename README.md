@@ -306,6 +306,52 @@ Writes `data/raw/<ACCESSION>.fasta` and `data/interim/analyzed_contigs.txt`.
 Pass that same contigs file to **every** tool in a comparison — see the
 benchmark-scope caveat in `CLAUDE.md`.
 
+### Selecting the Benchmark Genome Set
+
+A single genome gives a recall denominator of ~15 clusters. To benchmark at
+scale, pick many genomes — but the ground truth cannot be ranked naively:
+
+- **~58% of MiBiG records are not genomes.** They are BGC-only deposits where
+  the record *is* the cluster, so every tool scores detection recall ~1.0 on
+  them by construction. `--min-length` drops them.
+- **The same sequence appears under several accessions.** `NC_003888.3` and
+  `AL645882.2` are both the 8,667,507 bp *S. coelicolor* chromosome, with 15
+  clusters filed under one and 1 under the other. They are merged, and the
+  ground truth is rewritten onto the primary accession so that 16th cluster is
+  not lost.
+
+```bash
+# Inspect the selection first: ranking, merges, what got filtered
+pixi run python scripts/select_benchmark_genomes.py \
+    --ground-truth data/raw/streptomyces_ground_truth.tsv --inspect
+
+# Write the set (default: top 50 genome-scale records)
+pixi run python scripts/select_benchmark_genomes.py \
+    --ground-truth data/raw/streptomyces_ground_truth.tsv \
+    --output-dir data/interim/benchmark_set
+
+# Or take every genome-scale record
+pixi run python scripts/select_benchmark_genomes.py \
+    --ground-truth data/raw/streptomyces_ground_truth.tsv \
+    --output-dir data/interim/benchmark_set --top-n 0
+```
+
+Writes three files into `--output-dir`:
+
+| file | use |
+|---|---|
+| `benchmark_genomes.tsv` | the set, with merge provenance and cluster ids |
+| `analyzed_contigs.txt` | the `--contigs` scope file for `sharp.evaluate` |
+| `benchmark_ground_truth.tsv` | ground truth for the selection, contigs normalized |
+
+Pass `benchmark_ground_truth.tsv` and `analyzed_contigs.txt` — not the raw
+MiBiG ground truth — to every tool in the comparison.
+
+Record lengths are fetched once from NCBI esummary and cached in
+`data/interim/record_lengths.tsv`; `--offline` reuses the cache and never
+queries. Accessions NCBI cannot resolve (some WGS contigs) fall back to a
+length lower bound derived from ground-truth coordinates, and are reported.
+
 ### Preparing MiBiG Database
 
 ```bash
@@ -389,6 +435,7 @@ pixi run pytest
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
+│   ├── select_benchmark_genomes.py       # ground truth -> benchmark genome set + scope + normalized GT
 │   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
 │   ├── setup_deepbgc.sh
@@ -426,7 +473,8 @@ pixi run pytest
     ├── test_model_management.py
     ├── test_parquet_to_tsv.py
     ├── test_prepare_bgcatlas.py
-    └── test_prepare_mibig.py
+    ├── test_prepare_mibig.py
+    └── test_select_benchmark_genomes.py
 ```
 
 ## Currently Working on
