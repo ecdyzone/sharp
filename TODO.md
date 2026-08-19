@@ -26,9 +26,33 @@
       BGC-only deposits, merges RefSeq/GenBank twins, emits a contig-normalized
       GT), `download_benchmark_genomes.sh`, `run_{antismash,deepbgc}_array.sbatch`,
       `merge_predictions.py`. **Not yet run** — needs the davinci server.
-- [ ] **Run it.** Submit 1–2 antiSMASH array indices first, `seff <jobid>_<index>`,
-      correct `--cpus-per-task`, then submit the rest. DeepBGC sizing is already
-      measured and carries over unchanged.
+- [ ] **Run it** on davinci. Full sequence:
+      ```bash
+      scripts/download_benchmark_genomes.sh          # ~420 Mb, resumable
+      N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)   # 50
+
+      sbatch --array=1-2 scripts/run_antismash_array.sbatch          # measure first
+      seff <jobid>_1                                                 # then fix --cpus-per-task
+      sbatch --array=3-${N}%4 scripts/run_antismash_array.sbatch
+      sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch       # sizing already measured
+
+      pixi run python scripts/merge_predictions.py --tool antismash \
+          --input-dir ~/projects/antismash/out_benchmark \
+          --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+          --output data/interim/antismash_predictions.parquet
+
+      pixi run python -m sharp.evaluate \
+          --predictions data/interim/antismash_predictions.parquet \
+          --ground-truth data/interim/benchmark_set/benchmark_ground_truth.tsv \
+          --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+          --output data/processed/benchmark_antismash.json
+      ```
+      **Use `benchmark_ground_truth.tsv`, not `streptomyces_ground_truth.tsv`** —
+      the benchmark set merges RefSeq/GenBank twins onto one primary accession,
+      and only the normalized GT has contigs renamed to match. Passing the raw GT
+      silently drops every cluster filed under a non-primary twin (this is how
+      *S. coelicolor*'s 16th cluster goes missing). Pass the same `--contigs` to
+      every tool or the recall denominators differ.
 - [ ] Write up the numbers below with the MiBIG coordinate-coverage,
       benchmark-scope, and BGC Atlas optimism caveats (CLAUDE.md → "Benchmark
       comparison"). Report `detection` and `reciprocal` recall together.
