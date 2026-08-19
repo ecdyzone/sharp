@@ -31,10 +31,11 @@
       scripts/download_benchmark_genomes.sh          # ~420 Mb, resumable
       N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)   # 50
 
-      sbatch --array=1-2 scripts/run_antismash_array.sbatch          # measure first
-      seff <jobid>_1                                                 # then fix --cpus-per-task
-      sbatch --array=3-${N}%4 scripts/run_antismash_array.sbatch
-      sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch       # sizing already measured
+      # Both sizings are now measured, so submit the full arrays directly.
+      # (antiSMASH indices 1-2 already ran under job 45315; the script is
+      # resumable, so re-running them just skips.)
+      sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch
+      sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch
 
       pixi run python scripts/merge_predictions.py --tool antismash \
           --input-dir ~/projects/antismash/out_benchmark \
@@ -53,6 +54,12 @@
       silently drops every cluster filed under a non-primary twin (this is how
       *S. coelicolor*'s 16th cluster goes missing). Pass the same `--contigs` to
       every tool or the recall denominators differ.
+- [x] **antiSMASH array sizing measured** (2026-08-19, `seff` on job 45315,
+      indices 1-2): ~3 min wall per genome, CPU efficiency 5.4%/7.8% of 16
+      cores, 1.6 GB peak. antiSMASH's own module scheduler parallelises far
+      less than `--cpus` suggests — the same lesson DeepBGC taught (sized 8
+      cores, measured 0.86). `run_antismash_array.sbatch` is now 4 cores / 4G /
+      1h, throttle `%8`.
 - [ ] Write up the numbers below with the MiBIG coordinate-coverage,
       benchmark-scope, and BGC Atlas optimism caveats (CLAUDE.md → "Benchmark
       comparison"). Report `detection` and `reciprocal` recall together.

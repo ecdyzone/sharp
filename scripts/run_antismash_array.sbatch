@@ -5,10 +5,10 @@
 #
 # Submit (the array range must match the number of genomes):
 #   N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)
-#   sbatch --array=1-${N}%4 scripts/run_antismash_array.sbatch
+#   sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch
 #
 # Or against another set / list:
-#   sbatch --array=1-50%4 scripts/run_antismash_array.sbatch /path/to/contigs.txt
+#   sbatch --array=1-50%8 scripts/run_antismash_array.sbatch /path/to/contigs.txt
 #
 # Then convert every genome's output in one pass, from the S(H)ARP env:
 #   pixi run python scripts/merge_predictions.py --tool antismash \
@@ -20,29 +20,37 @@
 # failures, resubmitting retries only what failed, and the scheduler backfills
 # many small tasks more readily than one long reservation.
 #
-# `%4` rather than DeepBGC's `%8` because each task asks for 16 cores; four
-# concurrent tasks is already 64 cores. Tune to the partition.
+# `%8` throttles to 8 concurrent tasks, matching DeepBGC now that the measured
+# sizing below brings each task down to 4 cores. Tune to the partition.
 #
 # ── Sizing ──────────────────────────────────────────────────────────────────
-# STILL UNMEASURED, as in the single-genome script. Run `seff <jobid>_<index>`
-# on the first few completed tasks and cut hard if the CPU efficiency comes back
-# low -- DeepBGC was sized at 8 cores on the reasoning that hmmscan would
-# parallelise and measured 0.86.
+# MEASURED on the davinci cluster, `seff` on array job 45315, indices 1 and 2
+# (AL645882.2, 8.7 Mb, and the index-2 genome):
 #
-# An array makes that measurement cheap: submit a couple of indices first
-#   sbatch --array=1-2 scripts/run_antismash_array.sbatch
-# check `seff`, then submit the rest with the corrected --cpus-per-task.
+#   index 1: 2:56 wall, CPU efficiency 5.40% of 16 cores, 1.62 GB peak
+#   index 2: 3:05 wall, CPU efficiency 7.84% of 16 cores, 1.28 GB peak
 #
-# 12 hours per task carries over from the single-genome script. The largest
-# genome here is ~11.9 Mb against the 8.7 Mb benchmarked, so ~1.4x the work.
+# So antiSMASH averages ~1.3 cores of real parallelism and ~1.7 GB, not the 16
+# cores / 16 GB originally reserved on the untested assumption that --cpus would
+# be used. Same story as DeepBGC, which was sized at 8 cores and measured 0.86:
+# the module scheduler parallelises far less than the flag suggests.
+#
+# Sized to 4 cores / 4G -- ~3x the measured CPU and ~2.4x the measured memory,
+# so a heavier genome has room without hoarding a node. The largest genome in
+# the set is ~11.9 Mb (CP002047.1) against the 8.7 Mb measured, ~1.4x the work,
+# which 1 hour covers with an order of magnitude to spare.
+#
+# `%8` at 4 cores per task is 32 cores concurrently -- the same courtesy-limit
+# reasoning as DeepBGC, not a technical ceiling. Raise it if the partition is
+# idle.
 
 #SBATCH --job-name=antismash-bench
 #SBATCH --partition=basic
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=16G
-#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=4G
+#SBATCH --time=01:00:00
 #SBATCH --output=%x-%A_%a.out
 #SBATCH --error=%x-%A_%a.err
 
@@ -59,7 +67,7 @@ OUTROOT="$ANTISMASH_DIR/out_benchmark"
 
 if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     echo "ERROR: not running as a job array. Submit with --array, e.g." >&2
-    echo "  sbatch --array=1-\$(wc -l < $CONTIGS)%4 \$0" >&2
+    echo "  sbatch --array=1-\$(wc -l < $CONTIGS)%8 \$0" >&2
     exit 1
 fi
 
@@ -109,7 +117,7 @@ pixi run antismash "$GENOME" \
     --output-dir "$OUTDIR" \
     --genefinding-tool prodigal \
     --databases "$ANTISMASH_DB" \
-    --cpus "${SLURM_CPUS_PER_TASK:-16}"
+    --cpus "${SLURM_CPUS_PER_TASK:-4}"
 
 if [[ ! -s "$RESULT" ]]; then
     echo "ERROR: antiSMASH finished but $RESULT is missing or empty" >&2
