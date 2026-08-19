@@ -371,13 +371,16 @@ Each download is verified to start with `>` and its header checked against the
 expected accession — a mismatch there would make the genome score zero against
 the ground truth for reasons invisible in the metrics, so it is reported loudly.
 
-Genomes are fetched by **nucleotide accession** rather than read from a local
-NCBI assembly mirror. A mirror is indexed by RefSeq assembly while the ground
-truth is keyed by nucleotide accession (44 of the 50 are GenBank-style), so a
-mirror needs a GenBank→RefSeq contig-name translation whose failures are
-silent. Fetching by accession makes the FASTA header *be* the name the ground
-truth uses, and pins the benchmark to `accession.version` rather than to
-whenever the mirror was last synced.
+Genomes are fetched by **nucleotide accession** rather than read from the
+cluster's local NCBI mirror. That mirror is indexed by *assembly* (GCA/GCF)
+while the ground truth is keyed by *nucleotide record* (`AL645882.2`), and no
+index file maps between the two — the mapping lives only inside each
+per-assembly `*_assembly_report.txt`, so using it means building and maintaining
+a reverse index over ~12.8k files. Fetching by accession makes the FASTA header
+*be* the name the ground truth uses, and pins the benchmark to
+`accession.version` rather than to whenever the mirror was last synced. See
+[docs/NCBI_MIRROR.md](docs/NCBI_MIRROR.md) for the full inspection and the
+conditions under which the mirror becomes worth it.
 
 ### Preparing MiBiG Database
 
@@ -479,6 +482,7 @@ done
 ├── config
 ├── data
 ├── docs
+│   ├── NCBI_MIRROR.md                    # why the benchmark downloads instead of reading the cluster mirror
 │   ├── sharp_dag.html
 │   └── sharp_pipeline.html
 ├── environment.yml
