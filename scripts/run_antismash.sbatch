@@ -13,38 +13,43 @@
 #       --input ~/projects/antismash/out \
 #       --output data/interim/antismash_predictions.parquet
 #
-# ── Why CPU-only, and why more cores than DeepBGC ───────────────────────────
+# ── Why CPU-only ────────────────────────────────────────────────────────────
 # antiSMASH is Prodigal gene calling -> HMM detection rules -> per-region
 # analysis modules (NRPS/PKS domain prediction, ClusterBlast comparisons against
 # the reference DB, etc.). All of it is CPU-bound HMMER and DIAMOND work with no
 # GPU code path at all, so as with DeepBGC there is nothing for an L40S or A30
 # to do here -- leave the GPU nodes for the ESM-2 embedding step.
 #
-# ── Sizing, partly measured ─────────────────────────────────────────────────
-# UNMEASURED for antiSMASH -- run `seff <jobid>` after the first run and tighten
-# these, the way run_deepbgc.sbatch now is.
+# ── Sizing, measured ────────────────────────────────────────────────────────
+# MEASURED on the davinci cluster. This script previously reserved 16 cores /
+# 16G on the untested argument that antiSMASH takes an explicit `--cpus` and
+# hands it to its own module scheduler. That argument turned out to be wrong.
 #
-# The cautionary tale is next door: DeepBGC was sized at 8 cores / 32G on the
-# reasoning that hmmscan would parallelise, and job 42995 came back at 0.86 cores
-# and 1.71 GB -- 10.73% CPU efficiency. Reasoning about a pipeline is not a
-# measurement.
+# `seff` on array job 45315 index 1 ran this script's own default genome
+# (AL645882.2, 8.7 Mb): 2:56 wall, CPU efficiency 5.40% of 16 cores, 1.62 GB
+# peak. Index 2 agreed at 7.84% and 1.28 GB. So antiSMASH delivers ~1.3 cores
+# of real parallelism regardless of what `--cpus` is set to -- the same story as
+# DeepBGC, sized at 8 cores and measured at 0.86 (job 42995, 10.73%).
 #
-# The case for keeping 16 cores here anyway is mechanical rather than
-# speculative: antiSMASH takes an explicit `--cpus` and hands it to its own
-# module scheduler, which DeepBGC has no equivalent of. That is an argument, not
-# evidence -- so spend one over-provisioned run to get the number, then cut hard
-# if `seff` says 10% again.
+# Sized to 4 cores / 4G to match run_antismash_array.sbatch: ~3x the measured
+# CPU and ~2.4x the measured memory, so an override genome heavier than the
+# 8.7 Mb default has room without hoarding a node.
 #
-# Memory is 16G rather than the 64G first written here. ClusterBlast and HMMER
-# stream against the on-disk databases instead of loading the 10 GB into RAM, so
-# a single 8.7 Mb chromosome should land well under this.
+# Time stays at 12h rather than the array's 1h. The array runs a known set whose
+# largest member is ~11.9 Mb, while this script takes an arbitrary genome as $1
+# -- so the walltime is deliberately loose here. Measure your own runs with
+# `seff <jobid>` if you feed it something much larger.
+#
+# Memory is 4G rather than the 64G first written here. ClusterBlast and HMMER
+# stream against the on-disk databases instead of loading the 10 GB into RAM,
+# which the 1.62 GB measurement confirms.
 
 #SBATCH --job-name=antismash-scoe
 #SBATCH --partition=basic
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=16G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=4G
 #SBATCH --time=12:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
@@ -88,7 +93,7 @@ pixi run antismash "$GENOME" \
     --output-dir "$OUTDIR" \
     --genefinding-tool prodigal \
     --databases "$ANTISMASH_DB" \
-    --cpus "${SLURM_CPUS_PER_TASK:-16}"
+    --cpus "${SLURM_CPUS_PER_TASK:-4}"
 
 echo
 echo "Done. Convert with (the converter globs the output dir for the summary"

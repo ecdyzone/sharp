@@ -367,12 +367,14 @@ script over `AL645882.2`: **0.86 cores, 1.71 GB, 32m24s**. Despite `hmmscan`
 dominating the runtime, DeepBGC does not thread it, so the pipeline is serial —
 an earlier 8-core allocation ran at 10.73% CPU efficiency.
 
-`run_antismash.sbatch` still requests 16 cores / 16G. antiSMASH accepts `--cpus`
+antiSMASH's sizing (4 cores / 4G) is measured the same way. It accepts `--cpus`
 and hands it to its own module scheduler, but that scheduler parallelises very
-little in practice: the measurement on the array job (see
-[step 3](#3-running-the-baselines-as-job-arrays)) shows ~1.3 cores of real
-parallelism out of 16. The wide allocation is therefore mostly wasted here too,
-and `run_antismash_array.sbatch` is already sized down to 4 cores. Measure your
+little in practice: `seff` on array job 45315 index 1 — which ran the same
+`AL645882.2` genome this script defaults to — reported 5.40% CPU efficiency of
+16 cores and 1.62 GB peak, i.e. ~1.3 cores of real parallelism. Both
+`run_antismash.sbatch` and `run_antismash_array.sbatch` are sized from that.
+The single-genome script keeps a loose 12h walltime because it accepts an
+arbitrary genome as `$1`, where the array runs a known set. Measure your
 own runs rather than trusting these numbers on a different genome:
 
 ```bash
