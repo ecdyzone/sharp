@@ -1,21 +1,66 @@
-# Projeto
+# S(H)ARP
 
-> Link GitHub Pages: <https://ecdyzone.github.io/sharp>  
-> Repositório GitHub: <https://github.com/ecdyzone/sharp>  
-> Diagrama DAG: <https://ecdyzone.github.io/sharp/docs/sharp_dag.html>  
+S(H)ARP predicts Biosynthetic Gene Clusters (BGCs) in *Streptomyces* and related
+actinomycetes using **SARP transcription factors as anchors**, combining regulatory
+context with protein language model embeddings rather than biosynthetic enzyme
+patterns alone.
 
-Clique nos links abaixo para ir às páginas HTML interativas:
+> GitHub Pages: <https://ecdyzone.github.io/sharp>  
+> GitHub repository: <https://github.com/ecdyzone/sharp>  
+> DAG diagram: <https://ecdyzone.github.io/sharp/docs/sharp_dag.html>  
 
-- [Diagrama DAG (directed acyclic graph)](docs/sharp_dag.html) - Fluxograma do projeto, evidenciando inputs-processos-outputs.
-- [Página Descritiva](docs/sharp_pipeline.html) - Praticamente o mesmo conteúdo do Diagrama DAG, mas apresentado com uma interface menos técnica.
+Click the links below for the interactive HTML pages:
+
+- [DAG diagram (directed acyclic graph)](docs/sharp_dag.html) - Project flowchart, showing inputs-processes-outputs.
+- [Descriptive page](docs/sharp_pipeline.html) - Practically the same content as the DAG diagram, but presented with a less technical interface.
+
+## Table of Contents
+
+- [Quickstart](#quickstart)
+- [Setting up](#setting-up)
+- [Pipeline steps](#pipeline-steps)
+- [Ground truth](#ground-truth)
+- [Benchmarking](#benchmarking)
+- [Utilities](#utilities)
+- [Tests](#tests)
+- [Directory Structure](#directory-structure)
+- [Currently Working on](#currently-working-on)
+
+## Quickstart
+
+Just cloned the repo? This runs end to end with no data download:
+
+```bash
+pixi install                                   # set up the environment
+pixi run pytest                                # confirm it works
+
+# Benchmark against synthetic data — clusters and predictions that overlap
+# by construction, so the expected number is known in advance.
+pixi run python scripts/generate_mock_benchmark_data.py \
+    --n-clusters 20 --recall-rate 0.7 --n-false-positives 5
+pixi run python -m sharp.evaluate \
+    --predictions data/mock/predictions.parquet \
+    --ground-truth data/mock/ground_truth.tsv \
+    --output data/processed/benchmark.json
+# → detection recall=0.700 (14/20), matched 14/19 predictions
+```
+
+Where to go next:
+
+| If you want to... | Read |
+|---|---|
+| build the ground truth from MiBiG | [Ground truth](#ground-truth) |
+| compare against antiSMASH / DeepBGC / GECCO | [Benchmarking](#benchmarking) |
+| run a S(H)ARP pipeline step | [Pipeline steps](#pipeline-steps) |
+| move data onto a scratch disk | [Machine-specific settings](#machine-specific-settings-optional-env) |
 
 ## Setting up
 
 First run:
 
 ```bash
-git clone <repo>
-cd <repo>
+git clone https://github.com/ecdyzone/sharp
+cd sharp
 ```
 
 then install with `pixi` or `conda`
@@ -75,7 +120,8 @@ present, and credentials once a step needs them. Pipeline parameters (thresholds
 model choice, batch sizes) stay on the CLI so a run remains reproducible from the
 command that produced it.
 
-## Workflow
+
+## Pipeline steps
 
 > For reproducing with conda/mamba you have to:
 >
@@ -94,24 +140,72 @@ pixi run python -m sharp.extract_embeddings \
     --output data/interim/embeddings.parquet
 ```
 
-### Benchmarks
+## Ground truth
+
+Every benchmark number is measured against one of these two tables. **MiBiG is the
+primary ground truth** — manually curated, and what any reported result should be
+based on. **BGC Atlas is secondary and noisy**: its labels are themselves antiSMASH
+predictions, so agreement with them does not prove correctness. Report it alongside
+MiBiG, never alone.
+
+Build MiBiG first — [Selecting the genome set](#1-selecting-the-genome-set) consumes
+its output.
+
+> **Coverage caveat.** ~53% of MiBiG 4.0 *Streptomyces* entries store no genomic
+> coordinates, so they cannot be scored and are dropped. The resulting ground truth
+> is around 400 loci, not 900, and the dropped half skews toward older compound-first
+> submissions. This affects every tool equally, so it does not bias the comparison —
+> but absolute recall is "recall over coordinate-resolved MiBiG". See `CLAUDE.md`
+> for the full analysis.
+
+### Preparing MiBiG Database
 
 ```bash
-# 1. Generate correlated mock data — clusters and predictions that overlap by construction
-pixi run python scripts/generate_mock_benchmark_data.py \
-    --n-clusters 20 --recall-rate 0.7 --n-false-positives 5
+# All clusters
+pixi run python scripts/prepare_mibig_ground_truth.py \
+    --input-dir data/raw/mibig_json_4.0 \
+    --output data/raw/mibig_ground_truth.tsv
 
-# 2. Evaluate
-pixi run python -m sharp.evaluate \
-    --predictions data/mock/predictions.parquet \
-    --ground-truth data/mock/ground_truth.tsv \
-    --output data/processed/benchmark.json
-
-# Output: detection recall=0.700 (14/20), matched 14/19 predictions
-#         — matches the generator's --recall-rate 0.7 and 5 injected extras
+# Or focused on your organism of interest
+pixi run python scripts/prepare_mibig_ground_truth.py \
+    --input-dir data/raw/mibig_json_4.0 \
+    --output data/raw/streptomyces_ground_truth.tsv \
+    --genus Streptomyces
 ```
 
-#### Reading `benchmark.json`
+### Preparing BGC Atlas Database
+
+Secondary, noisy ground truth (labels are themselves antiSMASH predictions —
+report alongside MiBiG, never alone). The dump is 204k antiSMASH `.gbk` files
+downloaded by `scripts/download_bgc-atlas.sh` (DVC-managed).
+
+```bash
+# Inspect a few real files first (verify the schema on disk)
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --inspect data/raw/complete-bgcs
+
+# Build the TSV (streams over all ~204k files)
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --input-dir data/raw/complete-bgcs \
+    --output data/raw/bgcatlas_ground_truth.tsv
+
+# Develop / test against a small subset without walking 10 GB
+pixi run python scripts/prepare_bgcatlas_ground_truth.py \
+    --input-dir data/raw/complete-bgcs \
+    --output data/interim/bgcatlas_sample.tsv --limit 100
+```
+
+
+## Benchmarking
+
+Read [How evaluation works](#how-evaluation-works) first — the scope rule it
+describes governs every command in this section.
+
+### How evaluation works
+
+Every tool, including S(H)ARP itself, is scored the same way: its output is
+converted to a `predictions.parquet` and passed to `sharp.evaluate`, which writes a
+`benchmark.json`.
 
 | block | what it answers |
 |---|---|
@@ -136,12 +230,35 @@ Two things the schema is deliberate about:
 See `docs/ARCHITECTURE.md` → "Metrics — methodological choices" for the full
 rationale.
 
+### Smoke test with mock data
+
+Needs no genome and no ground truth — the generator builds clusters and
+predictions that overlap by construction, so the expected recall is known before
+the run:
+
+```bash
+# 1. Generate correlated mock data — clusters and predictions that overlap by construction
+pixi run python scripts/generate_mock_benchmark_data.py \
+    --n-clusters 20 --recall-rate 0.7 --n-false-positives 5
+
+# 2. Evaluate
+pixi run python -m sharp.evaluate \
+    --predictions data/mock/predictions.parquet \
+    --ground-truth data/mock/ground_truth.tsv \
+    --output data/processed/benchmark.json
+
+# Output: detection recall=0.700 (14/20), matched 14/19 predictions
+#         — matches the generator's --recall-rate 0.7 and 5 injected extras
+```
+
 ### Competitor baselines (antiSMASH / DeepBGC / GECCO)
 
 S(H)ARP does **not** run these tools — each has incompatible dependencies and
 installs into its own isolated pixi env via `scripts/setup_<tool>.sh`. You run
 the tool yourself, then convert its output to `predictions.parquet` and evaluate
 it exactly like S(H)ARP's own predictions.
+
+#### Installing a baseline
 
 All three locations the setup scripts write to are set in `.env` (see
 `.env.example`), so a laptop and a server can differ without editing a tracked
@@ -159,6 +276,10 @@ does) and fall back to `~/.local/share` otherwise, so neither machine normally
 needs an edit. The `cd ~/.local/src/<tool>` commands below assume the default
 `TOOLS_INSTALL_DIR` — if you override it, use the path the setup script prints
 when it finishes.
+
+#### Running and converting one tool
+
+antiSMASH is the worked example; DeepBGC and GECCO differ only where noted below.
 
 ```bash
 # 1. Install a baseline into its own env (~/.local/src/<tool>/), one-time
@@ -191,21 +312,7 @@ pixi run python -m sharp.evaluate \
     --output data/processed/benchmark_antismash.json
 ```
 
-On a Slurm cluster, `scripts/run_antismash.sbatch` wraps step 3 with explicit
-paths and a preflight check. Paths are set at the top of the file — edit them for
-your machine:
-
-```bash
-sbatch scripts/run_antismash.sbatch                    # benchmark genome
-sbatch scripts/run_antismash.sbatch /path/to/other.fasta
-```
-
-CPU-only (antiSMASH has no GPU code path), but it accepts `--cpus` and hands it
-to its own module scheduler, so it keeps a wider allocation than the DeepBGC job
-below — 16 cores / 16G, **not yet measured**. Run `seff <jobid>` after the first
-run and tighten it, as was done for DeepBGC.
-
-DeepBGC follows the same shape — the tool runs in its own env, S(H)ARP only parses `<prefix>.bgc.tsv`:
+**DeepBGC** — same shape; S(H)ARP parses `<prefix>.bgc.tsv` instead:
 
 ```bash
 bash scripts/setup_deepbgc.sh
@@ -214,45 +321,11 @@ cd ~/.local/src/deepbgc && pixi run deepbgc pipeline <genome.fasta> --output out
 pixi run python scripts/convert_deepbgc_to_parquet.py --inspect out
 pixi run python scripts/convert_deepbgc_to_parquet.py \
     --input out --output data/interim/deepbgc_predictions.parquet
-
-pixi run python -m sharp.evaluate \
-    --predictions data/interim/deepbgc_predictions.parquet \
-    --ground-truth data/raw/mibig_ground_truth.tsv \
-    --contigs data/interim/analyzed_contigs.txt \
-    --output data/processed/benchmark_deepbgc.json
 ```
 
-On a Slurm cluster, `scripts/run_deepbgc.sbatch` wraps that pipeline call with
-explicit paths and a preflight check. Paths are set at the top of the file — edit
-them for your machine:
-
-```bash
-sbatch scripts/run_deepbgc.sbatch                    # benchmark genome
-sbatch scripts/run_deepbgc.sbatch /path/to/other.fasta
-
-squeue -u $USER
-tail -f deepbgc-scoe-<jobid>.out
-```
-
-It requests CPU only, and no GPU: DeepBGC is Prodigal → `hmmscan` vs Pfam (both
-CPU-bound, and together the bulk of the runtime) → a small Keras classifier.
-Only that last stage could use a GPU and it is a rounding error in the total, so
-a GPU allocation would sit idle — leave the GPU nodes for the ESM-2 embedding
-step.
-
-Sizing (2 cores / 8G / 2h) comes from `seff` on a real run of this script over
-`AL645882.2`: **0.86 cores, 1.71 GB, 32m24s**. Despite `hmmscan` dominating the
-runtime, DeepBGC does not thread it, so the pipeline is serial — an earlier
-8-core allocation ran at 10.73% CPU efficiency. Measure your own runs the same
-way rather than trusting these numbers on a different genome:
-
-```bash
-seff <jobid>
-sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS,ExitCode
-```
-
-GECCO too — its `start`/`end` are 1-based inclusive (the one baseline tool that
-needs a coordinate conversion), which the converter applies automatically:
+**GECCO** — same shape, but its `start`/`end` are 1-based inclusive (the one
+baseline tool needing a coordinate conversion), which the converter applies
+automatically:
 
 ```bash
 bash scripts/setup_gecco.sh
@@ -261,55 +334,61 @@ cd ~/.local/src/gecco && pixi run gecco run --genome <genome.fasta> --output-dir
 pixi run python scripts/convert_gecco_to_parquet.py --inspect out
 pixi run python scripts/convert_gecco_to_parquet.py \
     --input out --output data/interim/gecco_predictions.parquet
-
-pixi run python -m sharp.evaluate \
-    --predictions data/interim/gecco_predictions.parquet \
-    --ground-truth data/raw/mibig_ground_truth.tsv \
-    --contigs data/interim/analyzed_contigs.txt \
-    --output data/processed/benchmark_gecco.json
 ```
 
-### Converting Parquet to TSV
+Both then evaluate exactly like step 5 above, with the same `--ground-truth` and
+the same `--contigs` file, writing `benchmark_deepbgc.json` / `benchmark_gecco.json`.
 
-Any parquet file the pipeline produces (`predictions.parquet`,
-`embeddings.parquet`, `kg_features.parquet`, ...) can be dumped to a plain
-TSV for inspection or sharing. List-typed columns (e.g. `embeddings.parquet`'s
-`embedding` vector) have no TSV representation, so they're joined into a
-single comma-separated cell — this is a one-way, informational dump, not a
-round-trippable format.
+#### Running on Slurm
+
+`scripts/run_antismash.sbatch` and `scripts/run_deepbgc.sbatch` wrap the tool
+invocation with explicit paths and a preflight check. Paths are set at the top of
+each file — edit them for your machine:
 
 ```bash
-# Inspect the schema first, especially for anything with list-typed columns
-pixi run python scripts/parquet_to_tsv.py --inspect data/interim/embeddings.parquet
+sbatch scripts/run_antismash.sbatch                    # benchmark genome
+sbatch scripts/run_antismash.sbatch /path/to/other.fasta
 
-pixi run python scripts/parquet_to_tsv.py \
-    --input data/interim/predictions.parquet \
-    --output data/interim/predictions.tsv
+sbatch scripts/run_deepbgc.sbatch                      # benchmark genome
+sbatch scripts/run_deepbgc.sbatch /path/to/other.fasta
+
+squeue -u $USER
+tail -f deepbgc-scoe-<jobid>.out
 ```
 
-### Downloading a Benchmark Genome
+Both request CPU only, and no GPU. DeepBGC is Prodigal → `hmmscan` vs Pfam (both
+CPU-bound, and together the bulk of the runtime) → a small Keras classifier. Only
+that last stage could use a GPU and it is a rounding error in the total, so a GPU
+allocation would sit idle — leave the GPU nodes for the ESM-2 embedding step.
+antiSMASH has no GPU code path at all.
 
-Fetches one contig by accession from NCBI nuccore and derives the `--contigs`
-scope file alongside it. Defaults to `AL645882.2` (*S. coelicolor* A3(2)), which
-carries 15 coordinate-resolved MiBiG clusters — the most of any single contig,
-and enough for a recall number that actually varies.
+DeepBGC's sizing (2 cores / 8G / 2h) comes from `seff` on a real run of this
+script over `AL645882.2`: **0.86 cores, 1.71 GB, 32m24s**. Despite `hmmscan`
+dominating the runtime, DeepBGC does not thread it, so the pipeline is serial —
+an earlier 8-core allocation ran at 10.73% CPU efficiency.
+
+`run_antismash.sbatch` still requests 16 cores / 16G. antiSMASH accepts `--cpus`
+and hands it to its own module scheduler, but that scheduler parallelises very
+little in practice: the measurement on the array job (see
+[step 3](#3-running-the-baselines-as-job-arrays)) shows ~1.3 cores of real
+parallelism out of 16. The wide allocation is therefore mostly wasted here too,
+and `run_antismash_array.sbatch` is already sized down to 4 cores. Measure your
+own runs rather than trusting these numbers on a different genome:
 
 ```bash
-# Default: S. coelicolor A3(2)
-scripts/download_genome.sh
-
-# Or any other nuccore accession
-scripts/download_genome.sh CP002993.1
+seff <jobid>
+sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS,ExitCode
 ```
 
-Writes `data/raw/<ACCESSION>.fasta` and `data/interim/analyzed_contigs.txt`.
-Pass that same contigs file to **every** tool in a comparison — see the
-benchmark-scope caveat in `CLAUDE.md`.
+### Scaling up: the 50-genome benchmark
 
-### Selecting the Benchmark Genome Set
+**This is the default benchmark.** A single genome caps the recall denominator at
+~15 clusters; the selected set is 50 genomes / 113 clusters. The four steps below
+run in order — each consumes what the previous one wrote.
 
-A single genome gives a recall denominator of ~15 clusters. To benchmark at
-scale, pick many genomes — but the ground truth cannot be ranked naively:
+#### 1. Selecting the genome set
+
+The ground truth cannot be ranked naively:
 
 - **~58% of MiBiG records are not genomes.** They are BGC-only deposits where
   the record *is* the cluster, so every tool scores detection recall ~1.0 on
@@ -352,7 +431,7 @@ Record lengths are fetched once from NCBI esummary and cached in
 queries. Accessions NCBI cannot resolve (some WGS contigs) fall back to a
 length lower bound derived from ground-truth coordinates, and are reported.
 
-### Downloading the Benchmark Genome Set
+#### 2. Downloading the genome set
 
 Fetches every genome named by `benchmark_genomes.tsv`, one FASTA per genome.
 Resumable — an existing valid FASTA is skipped, so re-running after an
@@ -382,76 +461,41 @@ a reverse index over ~12.8k files. Fetching by accession makes the FASTA header
 [docs/NCBI_MIRROR.md](docs/NCBI_MIRROR.md) for the full inspection and the
 conditions under which the mirror becomes worth it.
 
-### Preparing MiBiG Database
+#### 3. Running the baselines as job arrays
 
-```bash
-# All clusters
-pixi run python scripts/prepare_mibig_ground_truth.py \
-    --input-dir data/raw/mibig_json_4.0 \
-    --output data/raw/mibig_ground_truth.tsv
-
-# Or focused on your organism of interest
-pixi run python scripts/prepare_mibig_ground_truth.py \
-    --input-dir data/raw/mibig_json_4.0 \
-    --output data/raw/streptomyces_ground_truth.tsv \
-    --genus Streptomyces
-```
-
-### Preparing BGC Atlas Database
-
-Secondary, noisy ground truth (labels are themselves antiSMASH predictions —
-report alongside MiBiG, never alone). The dump is 204k antiSMASH `.gbk` files
-downloaded by `scripts/download_bgc-atlas.sh` (DVC-managed).
-
-```bash
-# Inspect a few real files first (verify the schema on disk)
-pixi run python scripts/prepare_bgcatlas_ground_truth.py \
-    --inspect data/raw/complete-bgcs
-
-# Build the TSV (streams over all ~204k files)
-pixi run python scripts/prepare_bgcatlas_ground_truth.py \
-    --input-dir data/raw/complete-bgcs \
-    --output data/raw/bgcatlas_ground_truth.tsv
-
-# Develop / test against a small subset without walking 10 GB
-pixi run python scripts/prepare_bgcatlas_ground_truth.py \
-    --input-dir data/raw/complete-bgcs \
-    --output data/interim/bgcatlas_sample.tsv --limit 100
-```
-
-## Tests
-
-Run tests with:
-
-```bash
-pixi run pytest
-```
-
-### Running the Scaled Benchmark
-
-Once the set is selected and downloaded, each baseline runs as a Slurm job
-array — one task per genome, so failures are isolated and resubmitting retries
-only what failed. Both array scripts skip genomes that already have output, so a
-partially-failed array can be resubmitted wholesale.
+Each baseline runs as a Slurm job array — one task per genome, so failures are
+isolated and resubmitting retries only what failed. Both array scripts skip
+genomes that already have output, so a partially-failed array can be resubmitted
+wholesale.
 
 ```bash
 N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)
 
-# antiSMASH: 16 cores/task, so throttle to 4 concurrent. Sizing is UNMEASURED —
-# submit 1-2 first, check `seff <jobid>_<index>`, then submit the rest.
-sbatch --array=1-${N}%4 scripts/run_antismash_array.sbatch
+# antiSMASH: 4 cores / 4G / 1h per task, 8 concurrent.
+sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch
 
-# DeepBGC: single-threaded, 2 cores/task, 8 concurrent
+# DeepBGC: single-threaded, 2 cores / 8G / 2h per task, 8 concurrent.
 sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch
 ```
 
-Then collapse the per-genome outputs into one predictions file per tool:
+Both per-task sizings are **measured**, not assumed. antiSMASH comes from `seff`
+on job 45315 (indices 1–2): ~3 min wall, 5.4%/7.8% CPU efficiency of 16 cores —
+about 1.3 cores of real parallelism — and 1.6 GB peak, hence 4 cores / 4G / 1h.
+DeepBGC carries the single-genome measurement (0.86 cores, 1.71 GB, 32m24s)
+unchanged, since it is single-threaded and the per-task shape does not vary with
+the array.
+
+#### 4. Merging and evaluating
+
+Collapse the per-genome outputs into one predictions file per tool:
 
 ```bash
-pixi run python scripts/merge_predictions.py --tool antismash \
-    --input-dir ~/projects/antismash/out_benchmark \
-    --contigs data/interim/benchmark_set/analyzed_contigs.txt \
-    --output data/interim/antismash_predictions.parquet
+for tool in antismash deepbgc; do
+  pixi run python scripts/merge_predictions.py --tool ${tool}\
+      --input-dir ~/projects/${tool}/out_benchmark \
+      --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+      --output data/interim/${tool}_predictions.parquet
+done
 ```
 
 Pass `--contigs` here too: a genome whose run never completed produces no
@@ -471,6 +515,55 @@ for tool in antismash deepbgc; do
         --contigs data/interim/benchmark_set/analyzed_contigs.txt \
         --output data/processed/benchmark_${tool}.json
 done
+```
+
+## Utilities
+
+### Converting Parquet to TSV
+
+Any parquet file the pipeline produces (`predictions.parquet`,
+`embeddings.parquet`, `kg_features.parquet`, ...) can be dumped to a plain
+TSV for inspection or sharing. List-typed columns (e.g. `embeddings.parquet`'s
+`embedding` vector) have no TSV representation, so they're joined into a
+single comma-separated cell — this is a one-way, informational dump, not a
+round-trippable format.
+
+```bash
+# Inspect the schema first, especially for anything with list-typed columns
+pixi run python scripts/parquet_to_tsv.py --inspect data/interim/embeddings.parquet
+
+pixi run python scripts/parquet_to_tsv.py \
+    --input data/interim/predictions.parquet \
+    --output data/interim/predictions.tsv
+```
+
+### Downloading a single genome
+
+For a one-genome smoke test, rather than the 50-genome set above.
+`download_genome.sh` fetches one contig by accession from NCBI nuccore and
+derives the `--contigs` scope file alongside it. Defaults to `AL645882.2`
+(*S. coelicolor* A3(2)), which carries 15 coordinate-resolved MiBiG clusters —
+the most of any single contig, and enough for a recall number that actually
+varies.
+
+```bash
+# Default: S. coelicolor A3(2)
+scripts/download_genome.sh
+
+# Or any other nuccore accession
+scripts/download_genome.sh CP002993.1
+```
+
+Writes `data/raw/<ACCESSION>.fasta` and `data/interim/analyzed_contigs.txt`.
+Pass that same contigs file to **every** tool in a comparison — see
+[How evaluation works](#how-evaluation-works).
+
+## Tests
+
+Run tests with:
+
+```bash
+pixi run pytest
 ```
 
 ## Directory Structure
@@ -562,4 +655,4 @@ done
 
 ## Currently Working on
 
-- prototyping benchmarks
+- Finishing benchmarks

@@ -460,7 +460,8 @@ header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p
 **The scaled run (50 genomes, 113 clusters) is the default now** — a
 single-genome run caps the recall denominator at 16 clusters. The
 single-genome flow below still works for a smoke test; see README
-"Running the Scaled Benchmark" for the full array-job sequence.
+"Benchmarking" → "Scaling up: the 50-genome benchmark" for the full
+array-job sequence.
 
 ```bash
 # 1. Select the genome set from the ground truth. This is not just "sort by
