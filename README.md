@@ -574,7 +574,40 @@ the array.
 
 #### 4. Merging and evaluating
 
-Collapse the per-genome outputs into one predictions file per tool:
+**The quick way — `scripts/run_benchmark.sh`.** Steps 1-3 stay manual (they are
+slow, need the network, and the array is something you want to watch). Step 4 is
+cheap and repeatable, so it is wrapped:
+
+```bash
+# Both tools; derives every path from the one scope name
+scripts/run_benchmark.sh benchmark_set_strep
+
+# One tool
+scripts/run_benchmark.sh benchmark_set_strep antismash
+
+# Sweep a score threshold — args after `--` go to sharp.evaluate.
+# The parquet is reused, so each point costs seconds.
+scripts/run_benchmark.sh benchmark_set_strep deepbgc -- --min-p-bgc 0.5
+
+# Show the resolved commands without running them
+scripts/run_benchmark.sh benchmark_set_strep --dry-run
+```
+
+It reads `data/interim/<scope>/{analyzed_contigs.txt,benchmark_ground_truth.tsv}`
+and the pool at `$POOL_ROOT/<tool>/out_benchmark` (default `~/projects`), then
+writes `data/interim/<tool>_predictions_<scope>.parquet` and
+`data/processed/benchmark_<scope>_<tool>.json`, printing recall per tool at the
+end.
+
+Deriving both scope files from one name is the point: pairing a scope file with
+the *wrong* ground truth yields a plausible-looking `benchmark.json` scored
+against the wrong denominator, with nothing in the output to flag it. It also
+refuses to overwrite an existing result (`--force`), warns when the pool holds
+fewer genomes than the scope lists (the array is probably still running), and
+rebuilds the parquet only when the pool has changed since it was written
+(`--remerge` forces).
+
+The two steps it wraps, if you want to run them by hand:
 
 ```bash
 SCOPE=benchmark_set            # the scope name; one per experiment
@@ -698,6 +731,7 @@ pixi run pytest
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
 │   ├── merge_predictions.py              # per-genome tool outputs -> one predictions.parquet
+│   ├── run_benchmark.sh                  # score one scope against the shared pool (merge + evaluate)
 │   ├── generate_mock_data.py
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
 │   ├── prepare_bgcatlas_ground_truth.py

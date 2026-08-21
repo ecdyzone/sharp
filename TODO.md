@@ -20,6 +20,8 @@ Rules:
   file with the raw MiBiG GT — twins-merged clusters vanish silently.
 - Name derived artifacts per scope: `benchmark_set_<name>/`,
   `<tool>_predictions_<name>.parquet`, `benchmark_<name>_<tool>.json`.
+  **`scripts/run_benchmark.sh <scope>` does all three** — it derives every path
+  from one scope name, so the naming is not something to get right by hand.
 
 ### Scenarios queued against the shared pool
 
