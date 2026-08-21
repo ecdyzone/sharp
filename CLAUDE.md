@@ -153,7 +153,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `sharp/evaluate.py` | Benchmark step: load predictions + GT (+ optional `--contigs` scope) → compute metrics → write JSON | `test_evaluate.py` |
 | `scripts/generate_mock_data.py` | Synthetic proteins → FASTA (for embedding step smoke tests) | `test_generate_mock_data.py` |
 | `scripts/generate_mock_benchmark_data.py` | Synthetic predictions + GT with controlled overlap (for benchmark smoke tests) | `test_evaluate.py` (integration) |
-| `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode; **rejects unusable accessions** (protein `WP_`/`NP_`, assembly `GCA_`/`ASMnnnvn`, WGS master `...01000000`) and spans <500 bp, and **collapses duplicate loci** filed under two cluster ids | `test_prepare_mibig.py` |
+| `scripts/prepare_mibig_ground_truth.py` | MiBIG 4.0 JSON dir → `ground_truth.tsv`; handles 3.x fallback; `--inspect` mode; `--genus` and `--exclude-eukaryotes` taxonomic scoping; **rejects unusable accessions** (protein `WP_`/`NP_`, assembly `GCA_`/`ASMnnnvn`, WGS master `...01000000`) and spans <500 bp, and **collapses duplicate loci** filed under two cluster ids | `test_prepare_mibig.py` |
 | `scripts/prepare_bgcatlas_ground_truth.py` | BGC Atlas `.gbk` dump → `bgcatlas_ground_truth.tsv` (secondary/noisy GT) | `test_prepare_bgcatlas.py` |
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
@@ -457,11 +457,27 @@ header confirms `sequence_id`, `cluster_id`, `start`, `end`, `average_p`, `max_p
 
 ### Running a full comparison
 
-**The scaled run (50 genomes, 113 clusters) is the default now** — a
+**Run once, slice many.** Baselines run over the broadest genome set once;
+every benchmark after that is a re-scope, not a re-run. The array output pool is
+keyed by accession (`~/projects/<tool>/out_benchmark/<ACCESSION>/`) and
+`--contigs` filters *both* the predictions and the ground-truth denominator
+(`metrics.py`), so a scope file plus its matching normalized GT fully define a
+benchmark. Never partition the pool per experiment — shared accession keys are
+what make re-slicing free. `--contigs` is therefore mandatory on
+`merge_predictions.py`, which would otherwise sweep in genomes from unrelated
+experiments. Name derived artifacts per scope
+(`<tool>_predictions_<name>.parquet`, `benchmark_<name>_<tool>.json`).
+See README → "Run once, slice many" and TODO.md for the queued scopes.
+
+**The scaled run (50 genomes, 113 clusters) is the current published set** — a
 single-genome run caps the recall denominator at 16 clusters. The
-single-genome flow below still works for a smoke test; see README
-"Benchmarking" → "Scaling up: the 50-genome benchmark" for the full
-array-job sequence.
+single-genome flow below still works for a smoke test.
+
+**Scoreable MiBIG is much smaller than its entry count** (measured 2026-08-21):
+3,013 entries → 1,634 coordinate-resolved (1,420 accessions) → 1,280 bacterial
+(1,112) → 414 *Streptomyces* (352). After `--min-length` drops BGC-only
+deposits, full *Streptomyces* is **93 genomes / 156 clusters**. `--genus` and
+`--exclude-eukaryotes` on `prepare_mibig_ground_truth.py` select these scopes.
 
 ```bash
 # 1. Select the genome set from the ground truth. This is not just "sort by

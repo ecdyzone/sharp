@@ -1,5 +1,76 @@
 # TODO
 
+## Benchmarking approach — run once, slice many
+
+**Decided 2026-08-21. This supersedes the per-experiment run model.**
+
+The baselines run over the broadest genome set we are willing to pay for,
+*once*. Every benchmark after that is a re-scope, not a re-run: the array output
+pool is keyed by accession (`~/projects/<tool>/out_benchmark/<ACCESSION>/`), and
+`--contigs` filters both the predictions and the ground-truth denominator
+(`metrics.py:288-289`). See README → "Run once, slice many".
+
+Rules:
+- **Never partition the output pool per experiment** — shared accession keys are
+  what make re-slicing free and let a widened scope pay only for new genomes.
+- **`--contigs` is mandatory on `merge_predictions.py`**, since the pool holds
+  every genome ever run.
+- A scope is a **pair**: `analyzed_contigs.txt` + its `benchmark_ground_truth.tsv`
+  from the same `select_benchmark_genomes.py --output-dir`. Never pair a scope
+  file with the raw MiBiG GT — twins-merged clusters vanish silently.
+- Name derived artifacts per scope: `benchmark_set_<name>/`,
+  `<tool>_predictions_<name>.parquet`, `benchmark_<name>_<tool>.json`.
+
+### Scenarios queued against the shared pool
+
+Numbers measured 2026-08-21 against `data/raw/mibig_json_4.0`. "Genomes" is
+after `--min-length` drops BGC-only deposits; `--min-length 0` keeps them.
+
+| # | Scope | Clusters | Genomes | Ground truth | Status |
+|---|---|---|---|---|---|
+| 0 | 50-genome *Streptomyces* (current) | 113 | 50 | `benchmark_set/` | ✅ done, see `sharp-davinci-copy/data/processed-50genomes/` |
+| 1 | **Full *Streptomyces*** | **156** | **93** | `streptomyces_ground_truth.tsv` | selected → `data/interim/benchmark_set_strep/`, not run |
+| 2 | **Bacteria only** | ~1,280 GT | TBD | `bacterial_ground_truth.tsv` ✅ built | not selected |
+| 3 | All genera (entire MiBiG) | ~1,634 GT | TBD | `mibig_ground_truth.tsv` | not selected |
+| 4 | BGC-only deposits (`--min-length 0` minus #1) | ~245 (*Strep*) | ~241 | any of the above | not selected |
+| 5 | Per-genus slices (*Amycolatopsis*, *Micromonospora*, …) | — | — | `--genus <name>` | idea only |
+
+- [ ] **#1 Full *Streptomyces* — run next.** Selected: 93 genomes / 156
+      clusters. **Note the correction:** an earlier estimate of ~352 genomes /
+      ~414 clusters was wrong — it counted all coordinate-resolved accessions
+      without `--min-length`. 263 of 352 *Streptomyces* accessions are BGC-only
+      deposits (median 67 kb) carrying 245 clusters, dropped by design. 156 is
+      the real *Streptomyces* ceiling, and the current run at 113 is already 72%
+      of it. Clean superset of #0: all 50 genomes retained, 43 added.
+      Download ~0.66 GB. Full commands in `../TODO-next-experiments.md`.
+- [ ] **#2 Bacteria only.** `bacterial_ground_truth.tsv` is built (1,280
+      clusters / 1,112 accessions via `--exclude-eukaryotes`). Selection needs
+      ~1,100 uncached NCBI esummary lookups — run under tmux, it is resumable.
+      Recommended over #3: removes the fungal walltime trap, and DeepBGC is a
+      bacterial model so scoring it on *Aspergillus* measures
+      domain-of-applicability rather than detection quality.
+- [ ] **#3 All genera.** Only if the team leader specifically means this by
+      "entire MiBiG". Adds 353 eukaryotic clusters (327 fungal + 26
+      plant/animal) over #2. **Raise antiSMASH `--time` to 12h first** — the 1h
+      sizing was measured on *Streptomyces* chromosomes and fungal genomes are
+      much slower.
+- [ ] **#4 BGC-only deposits — report separately, never merged into a headline
+      table.** The record *is* the cluster (median cluster covers 68% of its
+      record; 97 of 241 are ≥90%), so detection recall approaches 1.0 by
+      construction for every tool. Merging them would push recall to ~0.95+ for
+      both tools and dilute the antiSMASH-vs-DeepBGC difference into noise, and
+      would invert precision (little non-cluster territory to be wrong about).
+      Worth running *because they are cheap* (~67 kb vs ~8 Mb, ~1% the compute)
+      and having them in the pool means the sanity table costs no second
+      campaign. Open refinement: `--min-length` is blunt; a coverage-based
+      filter (drop records where the cluster is >50% of the sequence) would
+      recover ~90 clusters of real signal from the 95 records currently under
+      50% coverage. Needs a stated threshold in the methods.
+- [ ] **Disk check before any large scope.** The pool grows monotonically;
+      antiSMASH writes HTML + region `.gbk`s + JSON per genome. Measure with
+      `du -sh ~/projects/antismash/out_benchmark` on the existing 50 and
+      extrapolate before submitting ~1,100.
+
 ## Benchmarks — real data
 
 - [x] Run the full comparison with real data — done for the SCP1 smoke test

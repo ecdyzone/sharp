@@ -21,6 +21,7 @@ Click the links below for the interactive HTML pages:
 - [Pipeline steps](#pipeline-steps)
 - [Ground truth](#ground-truth)
 - [Benchmarking](#benchmarking)
+  - [Run once, slice many](#run-once-slice-many--the-benchmarking-approach)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -171,7 +172,37 @@ pixi run python scripts/prepare_mibig_ground_truth.py \
     --input-dir data/raw/mibig_json_4.0 \
     --output data/raw/streptomyces_ground_truth.tsv \
     --genus Streptomyces
+
+# Bacteria only — drops fungal/plant/animal entries (22% of the
+# coordinate-resolved set: 327 fungal + 26 plant/animal)
+pixi run python scripts/prepare_mibig_ground_truth.py \
+    --input-dir data/raw/mibig_json_4.0 \
+    --output data/raw/bacterial_ground_truth.tsv \
+    --exclude-eukaryotes
 ```
+
+MiBiG's taxonomy block carries only `{name, ncbiTaxId}` — no lineage — so
+"keep only bacteria" cannot be expressed as a field test. `--exclude-eukaryotes`
+applies a curated genus deny-list (`EUKARYOTIC_GENERA`, ~100 genera) against the
+first word of the taxonomy name, and logs which genera it skipped. It is a
+deny-list rather than an allow-list of bacteria so that an unlisted eukaryote is
+*kept* (and visible in the log) rather than a novel bacterium vanishing silently.
+
+**Not every entry is scoreable.** Of MiBiG 4.0's 3,013 entries, **1,363 (45%)
+store `location: {from: 0, to: 0}`** — the compound is characterized but the
+genomic locus is unknown, and a coordinate-based benchmark has nothing to score
+against. These are dropped on ingest and the count is logged. What remains:
+
+| scope | clusters | accessions |
+|---|---|---|
+| coordinate-resolved, all genera | 1,634 | 1,420 |
+| bacteria only (`--exclude-eukaryotes`) | 1,280 | 1,112 |
+| *Streptomyces* only (`--genus`) | 414 | 352 |
+
+Absolute recall figures are therefore "recall over coordinate-resolved MiBiG",
+not "recall over all known BGCs". The dropped half skews toward older,
+compound-first submissions — but it is dropped identically for every tool, so
+the *comparison* stays unbiased.
 
 ### Preparing BGC Atlas Database
 
@@ -382,11 +413,55 @@ seff <jobid>
 sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS,ExitCode
 ```
 
-### Scaling up: the 50-genome benchmark
+### Run once, slice many — the benchmarking approach
 
-**This is the default benchmark.** A single genome caps the recall denominator at
-~15 clusters; the selected set is 50 genomes / 113 clusters. The four steps below
-run in order — each consumes what the previous one wrote.
+**This is how every benchmark is produced.** Run each baseline over the broadest
+genome set you are willing to pay for, *once*, then derive as many benchmark
+numbers as you like by re-scoping — no recomputation.
+
+This works because the expensive step is keyed by genome, not by experiment:
+
+```
+~/projects/<tool>/out_benchmark/<ACCESSION>/     ← one shared pool, keyed by accession
+        │                                          array tasks skip genomes already done
+        ├─ merge_predictions.py --contigs A ──▶ <tool>_predictions_A.parquet ──▶ benchmark_A_<tool>.json
+        ├─ merge_predictions.py --contigs B ──▶ <tool>_predictions_B.parquet ──▶ benchmark_B_<tool>.json
+        └─ merge_predictions.py --contigs C ──▶ ...
+```
+
+`--contigs` filters **both** the predictions and the ground-truth denominator
+(`metrics.py`), so a scope file plus its matching ground truth fully define a
+benchmark. Producing a new one costs minutes.
+
+**Two rules that make this safe:**
+
+1. **Never partition the output pool per experiment.** `OUTROOT` is keyed by
+   accession precisely so two experiments sharing a genome share one directory —
+   that is what makes re-slicing free. Keep the *derived* artifacts separate
+   instead, named per scope:
+   `benchmark_set_<name>/`, `<tool>_predictions_<name>.parquet`,
+   `benchmark_<name>_<tool>.json`.
+2. **`--contigs` is mandatory, not optional.** Because the pool holds every
+   genome ever run, `merge_predictions.py` without `--contigs` would sweep in
+   genomes from unrelated experiments. It is what scopes the pool down to one
+   benchmark.
+
+A scope is always a **pair** of files from one `select_benchmark_genomes.py
+--output-dir`: `analyzed_contigs.txt` *and* its `benchmark_ground_truth.tsv`.
+They must travel together — the ground truth is contig-normalized for that
+selection (RefSeq/GenBank twins collapsed onto a primary accession), so pairing
+a scope file with the raw MiBiG ground truth silently drops clusters filed under
+a twin.
+
+See [TODO.md](TODO.md) for the scenarios queued against the shared pool
+(*Streptomyces*, bacteria-only, all genera, BGC-only deposits).
+
+### Worked example: the 50-genome benchmark
+
+The four steps below run in order — each consumes what the previous one wrote.
+A single genome caps the recall denominator at ~15 clusters; this set is 50
+genomes / 113 clusters. Substitute any other scope by changing `--output-dir`
+and the `--ground-truth` it is built from.
 
 #### 1. Selecting the genome set
 
@@ -471,14 +546,24 @@ genomes that already have output, so a partially-failed array can be resubmitted
 wholesale.
 
 ```bash
-N=$(wc -l < data/interim/benchmark_set/analyzed_contigs.txt)
+CONTIGS=data/interim/benchmark_set/analyzed_contigs.txt
+N=$(wc -l < $CONTIGS)
 
-# antiSMASH: 4 cores / 4G / 1h per task, 8 concurrent.
-sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch
+# Both scripts take the contigs file as $1 — that is how one shared output
+# pool serves several scopes. Submit DeepBGC first; it dominates the runtime.
 
 # DeepBGC: single-threaded, 2 cores / 8G / 2h per task, 8 concurrent.
-sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch
+sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch $CONTIGS
+
+# antiSMASH: 4 cores / 4G / 1h per task, 8 concurrent.
+sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch $CONTIGS
 ```
+
+Output lands in `~/projects/<tool>/out_benchmark/<ACCESSION>/` — the shared
+pool. Genomes already present are skipped, so widening the scope later only
+pays for the genomes that are new. Raise `--time` in the antiSMASH script
+before running scopes that include fungal genomes; the 1h sizing was measured
+on *Streptomyces* chromosomes.
 
 Both per-task sizings are **measured**, not assumed. antiSMASH comes from `seff`
 on job 45315 (indices 1–2): ~3 min wall, 5.4%/7.8% CPU efficiency of 16 cores —
@@ -492,11 +577,13 @@ the array.
 Collapse the per-genome outputs into one predictions file per tool:
 
 ```bash
+SCOPE=benchmark_set            # the scope name; one per experiment
+
 for tool in antismash deepbgc; do
-  pixi run python scripts/merge_predictions.py --tool ${tool}\
+  pixi run python scripts/merge_predictions.py --tool ${tool} \
       --input-dir ~/projects/${tool}/out_benchmark \
-      --contigs data/interim/benchmark_set/analyzed_contigs.txt \
-      --output data/interim/${tool}_predictions.parquet
+      --contigs data/interim/${SCOPE}/analyzed_contigs.txt \
+      --output data/interim/${tool}_predictions_${SCOPE}.parquet
 done
 ```
 
@@ -512,11 +599,17 @@ shared scope file:
 ```bash
 for tool in antismash deepbgc; do
     pixi run python -m sharp.evaluate \
-        --predictions data/interim/${tool}_predictions.parquet \
-        --ground-truth data/interim/benchmark_set/benchmark_ground_truth.tsv \
-        --contigs data/interim/benchmark_set/analyzed_contigs.txt \
-        --output data/processed/benchmark_${tool}.json
+        --predictions data/interim/${tool}_predictions_${SCOPE}.parquet \
+        --ground-truth data/interim/${SCOPE}/benchmark_ground_truth.tsv \
+        --contigs data/interim/${SCOPE}/analyzed_contigs.txt \
+        --output data/processed/benchmark_${SCOPE}_${tool}.json
 done
+```
+
+To produce another benchmark from the same pool, change `SCOPE` and re-run
+these last two blocks — the arrays do not run again.
+
+```bash
 ```
 
 ## Utilities
