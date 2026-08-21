@@ -216,6 +216,54 @@ class TestBuildGroundTruth:
         clusters = load_ground_truth_tsv(out)
         assert all("BGC0000999" not in c.cluster_id for c in clusters)
 
+    def test_exclude_eukaryotes_drops_fungal_entries(self, tmp_path: Path) -> None:
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        fungal = entry_40()
+        fungal["accession"] = "BGC0000777"
+        fungal["taxonomy"] = {"name": "Aspergillus nidulans FGSC A4",
+                              "ncbiTaxId": 227321}
+        self._write_entries(in_dir, {
+            "strep.json": entry_40(),      # Streptomyces — bacterial, kept
+            "amyco.json": entry_3x(),      # Amycolatopsis — bacterial, kept
+            "asp.json": fungal,            # Aspergillus — dropped
+        })
+        out = tmp_path / "gt.tsv"
+
+        n = build_ground_truth(in_dir, out, exclude_eukaryotes=True)
+        assert n == 2
+        clusters = load_ground_truth_tsv(out)
+        assert "BGC0000777" not in {c.cluster_id for c in clusters}
+
+    def test_exclude_eukaryotes_off_by_default(self, tmp_path: Path) -> None:
+        # The deny-list must not apply unless explicitly requested.
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        fungal = entry_40()
+        fungal["accession"] = "BGC0000777"
+        fungal["taxonomy"] = {"name": "Aspergillus nidulans", "ncbiTaxId": 162425}
+        self._write_entries(in_dir, {"asp.json": fungal})
+        out = tmp_path / "gt.tsv"
+
+        assert build_ground_truth(in_dir, out) == 1
+
+    def test_exclude_eukaryotes_matches_genus_not_substring(
+        self, tmp_path: Path
+    ) -> None:
+        # The deny-list is checked against the first word only. A bacterium
+        # whose species epithet happens to contain a listed genus name must
+        # survive — this is why the check is not a substring test.
+        in_dir = tmp_path / "json"
+        in_dir.mkdir()
+        tricky = entry_40()
+        tricky["accession"] = "BGC0000778"
+        tricky["taxonomy"] = {"name": "Streptomyces mucor-like sp. XY",
+                              "ncbiTaxId": 1}
+        self._write_entries(in_dir, {"tricky.json": tricky})
+        out = tmp_path / "gt.tsv"
+
+        assert build_ground_truth(in_dir, out, exclude_eukaryotes=True) == 1
+
     def test_recursive_search(self, tmp_path: Path) -> None:
         # Files may be nested in subdirectories after tar extraction.
         in_dir = tmp_path / "json"

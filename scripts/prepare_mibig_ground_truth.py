@@ -31,6 +31,13 @@ Usage:
         --input-dir data/raw/mibig_json_4.0 \\
         --output data/raw/streptomyces_ground_truth.tsv \\
         --genus Streptomyces
+
+    # Bacteria only: drop fungal/plant/animal entries (22% of coordinate-
+    # resolved MiBIG) via the EUKARYOTIC_GENERA deny-list
+    python scripts/prepare_mibig_ground_truth.py \\
+        --input-dir data/raw/mibig_json_4.0 \\
+        --output data/raw/bacterial_ground_truth.tsv \\
+        --exclude-eukaryotes
 """
 from __future__ import annotations
 
@@ -285,12 +292,57 @@ def inspect(input_dir: Path, n: int = 3) -> None:
             print(f"   {c}")
 
 
+# ══════════════════════ taxonomic exclusion (--exclude-eukaryotes) ══════════
+#
+# MiBIG's taxonomy block carries only {name, ncbiTaxId} — no lineage — so
+# "keep only bacteria" cannot be expressed as a field test. This is an explicit
+# genus deny-list, checked against the first word of the taxonomy name.
+#
+# Verified 2026-08-21 against data/raw/mibig_json_4.0: of 1,634 coordinate-
+# resolved clusters, 327 are fungal and 26 plant/animal (353 total, 22%).
+# Aspergillus (150), Penicillium (41) and Fusarium (37) dominate the fungal
+# side. Excluding them leaves 1,281 clusters across 1,112 accessions.
+#
+# Why a deny-list and not an allow-list of bacteria: bacterial genera in MiBIG
+# are long-tailed and new ones arrive with each release, so an allow-list would
+# silently drop novel bacteria. A deny-list fails the safe way — an unlisted
+# eukaryote is kept and shows up in the logged genus summary, rather than a
+# real bacterium vanishing without trace.
+EUKARYOTIC_GENERA = frozenset({
+    # Fungi — Ascomycota
+    "Aspergillus", "Penicillium", "Fusarium", "Alternaria", "Colletotrichum",
+    "Talaromyces", "Trichoderma", "Neurospora", "Magnaporthe", "Cochliobolus",
+    "Bipolaris", "Beauveria", "Metarhizium", "Claviceps", "Epichloe",
+    "Epichloë", "Hypoxylon", "Xylaria", "Monascus", "Chaetomium", "Sordaria",
+    "Botrytis", "Sclerotinia", "Phoma", "Stachybotrys", "Acremonium",
+    "Emericella", "Byssochlamys", "Paecilomyces", "Pestalotiopsis", "Daldinia",
+    "Cladosporium", "Curvularia", "Diaporthe", "Phomopsis", "Verticillium",
+    "Purpureocillium", "Tolypocladium", "Ophiocordyceps", "Cordyceps",
+    "Isaria", "Lecanicillium", "Simplicillium", "Arthrinium", "Nigrospora",
+    "Trichophyton", "Microsporum", "Histoplasma", "Blastomyces",
+    "Coccidioides", "Paracoccidioides", "Exophiala", "Fonsecaea",
+    "Cladophialophora", "Aureobasidium", "Hortaea", "Zymoseptoria",
+    "Parastagonospora", "Leptosphaeria", "Phaeosphaeria", "Setosphaeria",
+    "Pyrenophora", "Dothistroma", "Elsinoe", "Neofusicoccum", "Lasiodiplodia",
+    "Macrophomina", "Diplodia", "Botryosphaeria",
+    # Fungi — Basidiomycota / Mucoromycota / yeasts
+    "Ustilago", "Cryptococcus", "Saccharomyces", "Candida", "Malassezia",
+    "Ganoderma", "Pleurotus", "Armillaria", "Agaricus", "Coprinopsis",
+    "Schizophyllum", "Rhizopus", "Mucor", "Mortierella",
+    # Plants and animals
+    "Homo", "Mus", "Arabidopsis", "Oryza", "Zea", "Nicotiana", "Solanum",
+    "Papaver", "Catharanthus", "Taxus", "Cannabis", "Humulus", "Glycine",
+    "Medicago", "Vitis", "Citrus", "Salvia",
+})
+
+
 # ══════════════════════════════ orchestration ══════════════════════════════
 
 def build_ground_truth(
     input_dir: Path,
     output_path: Path,
     genus: str | None = None,
+    exclude_eukaryotes: bool = False,
 ) -> int:
     entries = load_entries(input_dir)
     if not entries:
@@ -301,12 +353,21 @@ def build_ground_truth(
     clusters: list[KnownCluster] = []
     n_no_coords = 0
     n_filtered_genus = 0
+    n_filtered_euk = 0
+    excluded_genera: dict[str, int] = {}
     rejected: dict[str, list[str]] = {}
     for entry, fname in entries:
         if genus is not None:
             tax = get_taxonomy_name(entry) or ""
             if genus.lower() not in tax.lower():
                 n_filtered_genus += 1
+                continue
+        if exclude_eukaryotes:
+            tax = get_taxonomy_name(entry) or ""
+            first_word = tax.split()[0] if tax.split() else ""
+            if first_word in EUKARYOTIC_GENERA:
+                n_filtered_euk += 1
+                excluded_genera[first_word] = excluded_genera.get(first_word, 0) + 1
                 continue
         rows = entry_to_clusters(entry, fname)
         if not rows:
@@ -340,6 +401,11 @@ def build_ground_truth(
     if genus is not None:
         LOG.info("genus filter %r: kept %d, skipped %d",
                  genus, len(entries) - n_filtered_genus, n_filtered_genus)
+    if exclude_eukaryotes:
+        top = sorted(excluded_genera.items(), key=lambda kv: -kv[1])[:5]
+        LOG.info("--exclude-eukaryotes: skipped %d entries across %d genera%s",
+                 n_filtered_euk, len(excluded_genera),
+                 (" (top: " + ", ".join(f"{g} {n}" for g, n in top) + ")") if top else "")
     if n_no_coords:
         LOG.warning("%d entries had no locus with usable coordinates", n_no_coords)
     for reason, ids in sorted(rejected.items()):
@@ -367,6 +433,11 @@ def main() -> None:
     p.add_argument("--output", type=Path,
                    default=RAW_DIR / "mibig_ground_truth.tsv",
                    help="output TSV (default: %(default)s)")
+    p.add_argument("--exclude-eukaryotes", action="store_true",
+                   help="drop fungal/plant/animal entries by genus deny-list "
+                        "(EUKARYOTIC_GENERA), leaving a bacteria-only ground "
+                        "truth; MiBIG stores no lineage, so this is a curated "
+                        "list, not a taxonomic query")
     p.add_argument("--genus", type=str, default=None,
                    help="keep only entries whose taxonomy name contains this "
                         "string (e.g. 'Streptomyces')")
@@ -385,7 +456,8 @@ def main() -> None:
 
     if args.input_dir is None:
         p.error("either --inspect DIR or --input-dir DIR is required")
-    build_ground_truth(args.input_dir, args.output, genus=args.genus)
+    build_ground_truth(args.input_dir, args.output, genus=args.genus,
+                       exclude_eukaryotes=args.exclude_eukaryotes)
 
 
 if __name__ == "__main__":
