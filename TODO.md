@@ -73,6 +73,32 @@ after `--min-length` drops BGC-only deposits; `--min-length 0` keeps them.
       `du -sh ~/projects/antismash/out_benchmark` on the existing 50 and
       extrapolate before submitting ~1,100.
 
+## Known defects
+
+- [ ] **Ground-truth TSVs are written with CRLF line endings.** `io.py` writes
+      them with `csv.writer`, whose default `lineterminator` is `\r\n`
+      (`io.py:259` opens the file with `newline=""`, which is correct for the
+      csv module but does not by itself give LF). Affects every
+      `*_ground_truth.tsv` and `benchmark_ground_truth.tsv` on disk today.
+
+      **Why it matters:** Python readers strip it, so `sharp.evaluate` and every
+      converter are unaffected and all current numbers are correct. Shell tools
+      are not — in `awk`, `cut` or `grep` the *last* column carries a trailing
+      `\r`, so a filter on the `class` column (`$5 == "NRPS"`) matches **nothing**.
+      Found 2026-09-01 while writing the per-class scope recipe in
+      `docs/BENCHMARK_SCOPES.md`: it returned 0 clusters for all four classes.
+      The failure is silent — a hand-built scope comes out with a header and zero
+      rows, and a benchmark scored against an empty denominator looks like a
+      finished run, not an error. This is the same class of trap as pairing a
+      scope with the wrong ground truth.
+
+      **Fix:** pass `lineterminator="\n"` to the `csv.writer` in `io.py`, then
+      regenerate every `*_ground_truth.tsv`. Deferred because it touches a tested
+      module and invalidates files on disk — do it as its own change, with a test
+      asserting the written bytes contain no `\r`. Until then the recipes in
+      `docs/BENCHMARK_SCOPES.md` strip it with `{sub(/\r$/, "")}` and the doc
+      explains why; anyone hand-building a scope should `wc -l` it before scoring.
+
 ## Benchmarks — real data
 
 - [x] Run the full comparison with real data — done for the SCP1 smoke test
