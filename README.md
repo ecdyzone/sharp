@@ -23,6 +23,7 @@ Click the links below for the interactive HTML pages:
 - [Benchmarking](#benchmarking)
   - [Run once, slice many](#run-once-slice-many--the-benchmarking-approach)
   - [Benchmarking in a shared clone](#benchmarking-in-a-shared-clone)
+  - [Which genomes, and which slices](#which-genomes-and-which-slices)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -454,8 +455,31 @@ selection (RefSeq/GenBank twins collapsed onto a primary accession), so pairing
 a scope file with the raw MiBiG ground truth silently drops clusters filed under
 a twin.
 
-See [TODO.md](TODO.md) for the scenarios queued against the shared pool
-(*Streptomyces*, bacteria-only, all genera, BGC-only deposits).
+### Which genomes, and which slices
+
+The pool we committed to, every scope carved out of it, and the commands that
+build both, are catalogued in
+**[docs/BENCHMARK_SCOPES.md](docs/BENCHMARK_SCOPES.md)** — read it before
+building a scope or submitting an array.
+
+In short: the baselines run once over **all 1,280 coordinate-resolved bacterial
+MiBiG clusters (1,112 accessions)**, BGC-only deposits included. That single run
+costs ~3 h of antiSMASH and ~1 day of DeepBGC at `%8`, and every scope after it
+is free:
+
+| scope | clusters | what it answers |
+|---|---|---|
+| `benchmark_set_strep` | 156 | the headline number |
+| `benchmark_set_actino` | 575 | where S(H)ARP actually applies — SARPs are an actinomycete family |
+| `benchmark_set_bact` | ~470-600 | "the entire (bacterial) MiBiG" |
+| `benchmark_set_pseudomonas` | 61 | negative control — no SARPs, so S(H)ARP should *not* win |
+| `benchmark_set_smoke` | ~5 | is my setup working? |
+| per-class slices | NRPS 302, PKS 235, … | which class is each tool best at |
+
+The genomes are downloaded once too, into `data/raw/genomes/<ACC>.fasta`, keyed
+by accession — so a new scope needs no download of its own either.
+
+See also [TODO.md](TODO.md) for the scenarios queued against the shared pool.
 
 ### Benchmarking in a shared clone
 
@@ -764,6 +788,7 @@ pixi run pytest
 ├── config
 ├── data
 ├── docs
+│   ├── BENCHMARK_SCOPES.md               # the genome pool, every scope carved from it, and how to build both
 │   ├── NCBI_MIRROR.md                    # why the benchmark downloads instead of reading the cluster mirror
 │   ├── sharp_dag.html
 │   └── sharp_pipeline.html

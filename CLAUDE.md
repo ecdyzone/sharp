@@ -469,6 +469,12 @@ what make re-slicing free. `--contigs` is therefore mandatory on
 experiments. Name derived artifacts per scope
 (`<tool>_predictions_<name>.parquet`, `benchmark_<name>_<tool>.json`).
 See README → "Run once, slice many" and TODO.md for the queued scopes.
+**`docs/BENCHMARK_SCOPES.md` is the catalogue**: the pool (all 1,280
+coordinate-resolved bacterial clusters / 1,112 accessions, BGC-only deposits
+included so they can be sliced out at scope time), every scope carved from it
+(`_strep` 156, `_actino` 575, `_bact`, per-genus negative controls, per-class
+slices, a 3-genome smoke scope), the rationale for each, and the exact commands
+that build the ground truths, the pool list, the download and the scopes.
 
 **The scaled run (50 genomes, 113 clusters) is the current published set** — a
 single-genome run caps the recall denominator at 16 clusters. The
