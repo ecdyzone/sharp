@@ -22,6 +22,7 @@ Click the links below for the interactive HTML pages:
 - [Ground truth](#ground-truth)
 - [Benchmarking](#benchmarking)
   - [Run once, slice many](#run-once-slice-many--the-benchmarking-approach)
+  - [Benchmarking in a shared clone](#benchmarking-in-a-shared-clone)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -456,6 +457,64 @@ a twin.
 See [TODO.md](TODO.md) for the scenarios queued against the shared pool
 (*Streptomyces*, bacteria-only, all genera, BGC-only deposits).
 
+### Benchmarking in a shared clone
+
+**If someone has already run the baselines, you do not run them again.** On the
+server the genomes, the output pool and the scope files all live in one
+checkout, and everyone benchmarks inside it. Producing a number is then a
+minutes-long merge-and-score, not a multi-day job array.
+
+```bash
+cd <the shared clone>                    # e.g. ~<owner>/projects/igem2026/git-clones/sharp
+
+scripts/run_benchmark.sh                 # no scope: lists the ones that exist
+scripts/run_benchmark.sh benchmark_set_strep --label $USER
+```
+
+That is the whole workflow. `--label` is the only thing you need to remember,
+and it exists because results are otherwise keyed by scope and tool alone:
+without it, two people scoring the same scope write the same
+`benchmark_<scope>_<tool>.json`. With it you get
+`benchmark_<scope>_<tool>.<label>.json` and nobody's numbers move under them.
+The same applies to a threshold sweep, where every point would otherwise land on
+one file:
+
+```bash
+for t in 0.0 0.3 0.5 0.7 0.9; do
+    scripts/run_benchmark.sh benchmark_set_strep deepbgc \
+        --label "p${t}" -- --min-p-bgc "$t"
+done
+```
+
+Three things worth knowing about sharing one clone:
+
+- **The merged parquet is shared on purpose.** `<tool>_predictions_<scope>.parquet`
+  is a derived cache keyed by scope and tool, and reusing it is what makes a
+  sweep cost seconds, so it carries no label. It is written to a temporary path
+  and renamed into place, so a merge running next to you can never hand you a
+  half-written file.
+- **Every result records who made it.** Each JSON carries a `provenance` block —
+  user, host, time, git commit, the pool it read and how many genomes were in it,
+  and the `sharp.evaluate` arguments. A directory of shared results is unreadable
+  a month later without it.
+- **An existing result is never overwritten silently.** The wrapper refuses and
+  names the file's owner. If it is not yours, prefer `--label`; `--force`
+  replaces their file.
+
+One-time setup, by whoever owns the clone — both output directories are written
+to by everyone, so they need to be group-writable:
+
+```bash
+chmod g+rwxs data/interim data/processed   # setgid: new files keep the group
+```
+
+and each person should have `umask 002` set, so their own results stay writable
+by the rest of the group. `run_benchmark.sh` checks this before doing any work
+and prints these two commands if it is missing.
+
+Everything else — selecting a scope, downloading genomes, submitting the arrays
+— is the pool owner's job, and is described in the worked example below.
+
 ### Worked example: the 50-genome benchmark
 
 The four steps below run in order — each consumes what the previous one wrote.
@@ -586,8 +645,12 @@ scripts/run_benchmark.sh benchmark_set_strep
 scripts/run_benchmark.sh benchmark_set_strep antismash
 
 # Sweep a score threshold — args after `--` go to sharp.evaluate.
-# The parquet is reused, so each point costs seconds.
-scripts/run_benchmark.sh benchmark_set_strep deepbgc -- --min-p-bgc 0.5
+# The parquet is reused, so each point costs seconds. Label each point, or
+# every threshold overwrites the same file.
+scripts/run_benchmark.sh benchmark_set_strep deepbgc --label p50 -- --min-p-bgc 0.5
+
+# Your own copy of a result, in a clone other people also benchmark in
+scripts/run_benchmark.sh benchmark_set_strep --label $USER
 
 # Show the resolved commands without running them
 scripts/run_benchmark.sh benchmark_set_strep --dry-run
@@ -596,8 +659,9 @@ scripts/run_benchmark.sh benchmark_set_strep --dry-run
 It reads `data/interim/<scope>/{analyzed_contigs.txt,benchmark_ground_truth.tsv}`
 and the pool at `$POOL_ROOT/<tool>/out_benchmark` (default `~/projects`), then
 writes `data/interim/<tool>_predictions_<scope>.parquet` and
-`data/processed/benchmark_<scope>_<tool>.json`, printing recall per tool at the
-end.
+`data/processed/benchmark_<scope>_<tool>.json` (`...<tool>.<label>.json` with
+`--label`), printing recall per tool at the end. Each result also gets a
+`provenance` block naming who produced it, from which pool, at which commit.
 
 Deriving both scope files from one name is the point: pairing a scope file with
 the *wrong* ground truth yields a plausible-looking `benchmark.json` scored
@@ -641,9 +705,6 @@ done
 
 To produce another benchmark from the same pool, change `SCOPE` and re-run
 these last two blocks — the arrays do not run again.
-
-```bash
-```
 
 ## Utilities
 
