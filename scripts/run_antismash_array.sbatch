@@ -64,8 +64,13 @@
 #
 # Sized to 4 cores / 4G -- ~3x the measured CPU and ~2.4x the measured memory,
 # so a heavier genome has room without hoarding a node. The largest genome in
-# the set is ~11.9 Mb (CP002047.1) against the 8.7 Mb measured, ~1.4x the work,
-# which 1 hour covers with an order of magnitude to spare.
+# the Streptomyces set is ~11.9 Mb (CP002047.1) against the 8.7 Mb measured.
+#
+# Walltime is 4h, not the 1h that sizing implies. The measurements are all from
+# Streptomyces chromosomes, while the bacterial pool reaches ~13 Mb (myxobacteria),
+# and a contended node stretches wall-clock without changing CPU time. A timeout
+# costs the whole task plus a retry; an unused reservation on a pinned node costs
+# nothing. Lower it if you ever unpin --nodelist and want better backfill.
 #
 # `%8` at 4 cores per task is 32 cores concurrently -- the same courtesy-limit
 # reasoning as DeepBGC, not a technical ceiling. Raise it if the partition is
@@ -77,7 +82,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=4G
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 

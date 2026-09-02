@@ -57,10 +57,16 @@
 # single-threaded end to end -- it shells out to hmmscan without threading it --
 # so the per-task shape does not change with the array; only the count does.
 #
-# The largest genome in the set is ~11.9 Mb (CP002047.1) against the 8.7 Mb that
-# was measured, so ~1.4x the work. 2 hours keeps the same ~3.7x headroom the
-# single-genome script deliberately carries. Re-measure with
-# `seff <jobid>_<index>` -- note the array index suffix.
+# The largest genome in the Streptomyces set is ~11.9 Mb (CP002047.1) against the
+# 8.7 Mb measured, so ~1.4x the work.
+#
+# Walltime is 6h against a measured 32 min. That is deliberate slack: the
+# measurement is a Streptomyces chromosome, the bacterial pool reaches ~13 Mb
+# (myxobacteria), DeepBGC's hmmscan stage is serial, and a contended node
+# stretches wall-clock without changing CPU time. A timeout costs the task plus a
+# retry; an unused reservation on a pinned node costs nothing. The one real cost
+# is that a hung task holds a %-slot for 6h -- lower it if you see tasks hanging.
+# Re-measure with `seff <jobid>_<index>` -- note the array index suffix.
 
 #SBATCH --job-name=deepbgc-bench
 #SBATCH --partition=basic
@@ -68,7 +74,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 

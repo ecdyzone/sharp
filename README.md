@@ -636,10 +636,10 @@ N=$(wc -l < "$CONTIGS")
 # Both scripts take the contigs file as $1 — that is how one shared output
 # pool serves several scopes. Submit DeepBGC first; it dominates the runtime.
 
-# DeepBGC: single-threaded, 2 cores / 8G / 2h per task, 8 concurrent.
+# DeepBGC: single-threaded, 2 cores / 8G / 6h per task, 8 concurrent.
 sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch "$CONTIGS"
 
-# antiSMASH: 4 cores / 4G / 1h per task, 8 concurrent.
+# antiSMASH: 4 cores / 4G / 4h per task, 8 concurrent.
 sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch "$CONTIGS"
 ```
 
@@ -687,13 +687,15 @@ drains. The offset defaults to 0, so every invocation above stays valid.
 
 Output lands in `~/projects/<tool>/out_benchmark/<ACCESSION>/` — the shared
 pool. Genomes already present are skipped, so widening the scope later only
-pays for the genomes that are new. Raise `--time` in the antiSMASH script
-before running scopes that include fungal genomes; the 1h sizing was measured
-on *Streptomyces* chromosomes.
+pays for the genomes that are new. Both walltimes (antiSMASH 4h, DeepBGC 6h)
+carry deliberate slack over the measured 3 min / 32 min: the measurements are
+*Streptomyces* chromosomes while the bacterial pool reaches ~13 Mb, and a
+timeout costs a retry while an unused reservation on a pinned node costs
+nothing. Raise them further for scopes with fungal genomes.
 
 Both per-task sizings are **measured**, not assumed. antiSMASH comes from `seff`
 on job 45315 (indices 1–2): ~3 min wall, 5.4%/7.8% CPU efficiency of 16 cores —
-about 1.3 cores of real parallelism — and 1.6 GB peak, hence 4 cores / 4G / 1h.
+about 1.3 cores of real parallelism — and 1.6 GB peak, hence 4 cores / 4G.
 DeepBGC carries the single-genome measurement (0.86 cores, 1.71 GB, 32m24s)
 unchanged, since it is single-threaded and the per-task shape does not vary with
 the array.
