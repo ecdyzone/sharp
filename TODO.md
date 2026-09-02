@@ -99,6 +99,55 @@ after `--min-length` drops BGC-only deposits; `--min-length 0` keeps them.
       `docs/BENCHMARK_SCOPES.md` strip it with `{sub(/\r$/, "")}` and the doc
       explains why; anyone hand-building a scope should `wc -l` it before scoring.
 
+- [ ] **The pool list carries unversioned accessions, so 51 genomes' contigs
+      will not match the ground truth.** `select_benchmark_genomes.py` normally
+      takes the accession from NCBI esummary's `accessionversion` field, which is
+      versioned. But some WGS contigs are absent from that index (rejected as
+      "Invalid uid"), and those fall through to `infer_lower_bounds`, which builds
+      the record from the ground truth instead — `RecordInfo(accession=cap, ...)`,
+      where `cap` is `caption_of()`, i.e. the version **stripped**.
+
+      **Symptom, measured 2026-09-01** on the 1,087-genome bacterial pool: 59 of
+      the accessions in `benchmark_genomes.tsv` have no version suffix, and
+      `download_benchmark_genomes.sh` reported exactly 56 contig-name mismatches
+      (the other 3 failed to download). 51 are pure version suffix — ground truth
+      says `JADBID010000001`, NCBI answers `>JADBID010000001.1`. The remaining 5
+      are `GPC_`/`GPS_` identifiers that NCBI dereferences to something unrelated
+      (`GPC_000001832` → `NC_027752.1`), whose coordinates are unverified.
+
+      **Why it matters:** the pool directories are keyed by the bare accession and
+      are fine, but each tool copies the FASTA header into its output, so the
+      `contig` column of the merged predictions carries the version while
+      `analyzed_contigs.txt` and the ground truth do not. `--contigs` then filters
+      those predictions out while keeping their clusters in the recall
+      denominator: 51 genomes score a guaranteed zero, invisibly.
+
+      **Fix (needed before anything can be scored):** normalize in
+      `merge_predictions.py` — when a prediction's contig is absent from the scope
+      but its caption (`accession.split(".")[0]`) is present, map it to the
+      caption. Symmetric across tools, and it also absorbs a future NCBI version
+      bump, which would otherwise break a pool silently the same way. Do **not**
+      fix it by rewriting FASTA headers mid-campaign: the pools would then
+      disagree with each other and need two different normalizations.
+
+- [ ] **`prepare_mibig_ground_truth.py` lets two more classes of unusable
+      accession through.** `rejection_reason()` catches `WP_`/`NP_`/`YP_` proteins,
+      `GCA_`/`ASM` assemblies and `...01000000` WGS masters, but the same pool run
+      produced 8 accessions that no amount of retrying will fetch:
+
+      - `EGF94505`, `RVT50611`, `SEN48742` — GenBank **protein** accessions in the
+        bare 3-letters-plus-5-digits form, which the `WP_`/`NP_` prefix test misses.
+      - `BMMK00000000.1`, `MDEQ00000000.2`, `AJJQ00000000.1`, `SUMB00000000.1`,
+        `JAPMUZ000000000.1` — **WGS master records**, which hold no sequence. The
+        existing test matches the `...01000000` shape but not all-zeros.
+
+      Add `^[A-Z]{3}\d{5}(\.\d+)?$` for the proteins and replace the WGS test
+      with a trailing-zeros one (`0{6}(\.\d+)?$`), which covers `01000000`,
+      `00000000` and `000000000` alike. Also reject `GPC_`/`GPS_`, which are not
+      nucleotide accessions. Until then they reach the scope file, fail their array
+      tasks, and — worse — stay in the recall denominator as clusters no tool was
+      ever given a chance to find.
+
 ## Benchmarks — real data
 
 - [x] Run the full comparison with real data — done for the SCP1 smoke test
