@@ -247,13 +247,46 @@ equals the expected accession. Use tmux.
 
 ### 4. Run the baselines over the pool
 
+The pool is larger than Slurm will accept as a single array. `MaxArraySize`
+(commonly 1001) caps the highest legal array *index* at 1000 — it is not a
+concurrency limit, so letting a running array drain does not make index 1001
+legal; `--array=1001-1087` is rejected at parse time with `Invalid job array
+specification`. Both scripts therefore take an **index offset as `$2`** and read
+line `SLURM_ARRAY_TASK_ID + OFFSET`, so successive windows reuse indices
+`1..1000` over the same list rather than cutting it into per-chunk files that
+would each have to be regenerated and frozen separately.
+
 ```bash
+mkdir -p logs        # Slurm writes task logs here and will NOT create it
 CONTIGS=data/interim/pool_bact/analyzed_contigs.txt
 N=$(wc -l < "$CONTIGS")
+MAX=1000             # MaxArraySize - 1; scontrol show config | grep -i maxarraysize
 
-sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch   "$CONTIGS"   # submit first, ~1 day
-sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch "$CONTIGS"   # ~3 h
+# submit() <script> <throttle> — one chained submission per window of $MAX
+submit() {
+    local prev="" off n dep
+    for (( off = 0; off < N; off += MAX )); do
+        n=$(( N - off < MAX ? N - off : MAX ))
+        dep=${prev:+--dependency=afterany:$prev}
+        prev=$(sbatch --parsable $dep --array=1-${n}%$2 "$1" "$CONTIGS" "$off")
+        echo "$(basename "$1") offset $off -> job $prev"
+    done
+}
+
+submit scripts/run_deepbgc_array.sbatch   8    # submit first, ~1 day
+submit scripts/run_antismash_array.sbatch 8    # ~3 h
 ```
+
+For the 1,087-genome pool that is two submissions per tool: `--array=1-1000` at
+offset 0, then `--array=1-87` at offset 1000, chained with `--dependency` so the
+second starts as the first drains. The offset defaults to 0, so a pool under the
+cap still submits with a plain `--array=1-${N}%8 ... "$CONTIGS"`.
+
+**Do not edit `analyzed_contigs.txt` while an array is in flight.** Each task
+reads it with `sed -n "${LINE}p"` when that task *starts* — only the script body
+is snapshotted at submit time. Renumbering the lines mid-run silently skips some
+genomes and double-runs others. This is why dropping unusable accessions from
+the scope has to wait until the pool has finished.
 
 Both arrays are resumable: a task whose result file already exists
 (`<ACC>/<ACC>.json` for antiSMASH, `<ACC>/<ACC>.bgc.tsv` for DeepBGC) exits

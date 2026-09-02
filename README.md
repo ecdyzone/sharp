@@ -629,18 +629,61 @@ genomes that already have output, so a partially-failed array can be resubmitted
 wholesale.
 
 ```bash
+mkdir -p logs        # Slurm writes task logs here and will NOT create it
 CONTIGS=data/interim/benchmark_set/analyzed_contigs.txt
-N=$(wc -l < $CONTIGS)
+N=$(wc -l < "$CONTIGS")
 
 # Both scripts take the contigs file as $1 — that is how one shared output
 # pool serves several scopes. Submit DeepBGC first; it dominates the runtime.
 
 # DeepBGC: single-threaded, 2 cores / 8G / 2h per task, 8 concurrent.
-sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch $CONTIGS
+sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch "$CONTIGS"
 
 # antiSMASH: 4 cores / 4G / 1h per task, 8 concurrent.
-sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch $CONTIGS
+sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch "$CONTIGS"
 ```
+
+**The contigs file is read by each task when that task starts**, not snapshotted
+at submit time the way the script body is. Editing it while an array is in
+flight renumbers the lines under every task that has not started yet, silently
+skipping some genomes and running others twice. Leave it alone until the array
+drains — which is also why dropping unusable accessions from a scope has to wait
+for the pool to finish.
+
+**Pools larger than 1,000 genomes need more than one submission.** Slurm's
+`MaxArraySize` (commonly 1001) caps the highest legal array *index* at 1000; it
+is not a concurrency limit, so waiting for a running array to drain does not
+make `--array=1001-1087` legal — it is rejected at parse time with `Invalid job
+array specification`. Each script therefore takes an **index offset as `$2`** and
+reads line `SLURM_ARRAY_TASK_ID + OFFSET`, so successive windows reuse indices
+`1..1000` over the same list instead of slicing it into per-chunk files:
+
+```bash
+mkdir -p logs        # Slurm writes task logs here and will NOT create it
+CONTIGS=data/interim/pool_bact/analyzed_contigs.txt
+N=$(wc -l < "$CONTIGS")
+MAX=1000             # MaxArraySize - 1; scontrol show config | grep -i maxarraysize
+
+# submit() <script> <throttle> — one chained submission per window of $MAX
+submit() {
+    local prev="" off n dep
+    for (( off = 0; off < N; off += MAX )); do
+        n=$(( N - off < MAX ? N - off : MAX ))
+        dep=${prev:+--dependency=afterany:$prev}
+        prev=$(sbatch --parsable $dep --array=1-${n}%$2 "$1" "$CONTIGS" "$off")
+        echo "$(basename "$1") offset $off -> job $prev"
+    done
+}
+
+submit scripts/run_deepbgc_array.sbatch   8    # submit first, ~1 day
+submit scripts/run_antismash_array.sbatch 8    # ~3 h
+
+```
+
+
+For a 1,087-genome pool that is two submissions — `--array=1-1000` at offset 0
+and `--array=1-87` at offset 1000 — chained so the second starts when the first
+drains. The offset defaults to 0, so every invocation above stays valid.
 
 Output lands in `~/projects/<tool>/out_benchmark/<ACCESSION>/` — the shared
 pool. Genomes already present are skipped, so widening the scope later only

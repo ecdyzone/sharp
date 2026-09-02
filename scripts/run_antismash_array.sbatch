@@ -10,6 +10,33 @@
 # Or against another set / list:
 #   sbatch --array=1-50%8 scripts/run_antismash_array.sbatch /path/to/contigs.txt
 #
+# Args: $1 = contigs list (default below), $2 = index offset (default 0).
+#
+# ── Submitting a pool larger than MaxArraySize ──────────────────────────────
+# Slurm's MaxArraySize (commonly 1001) caps the highest legal array *index* at
+# 1000. It is not a concurrency limit, so waiting for a running array to drain
+# does not raise it -- `--array=1001-1087` is rejected at parse time with
+#
+#   sbatch: error: Batch job submission failed: Invalid job array specification
+#
+# Submit in windows over the same list, moving the offset (arg 2) instead of
+# cutting the list up. Chunk 2 covers lines 1001+ using indices 1..87 again:
+#
+#   scontrol show config | grep -i maxarraysize      # confirm the cap
+#   mkdir -p logs                     # Slurm will NOT create it; tasks die if absent
+#   CONTIGS=data/interim/pool_bact/analyzed_contigs.txt
+#   N=$(wc -l < "$CONTIGS")
+#   MAX=1000                          # MaxArraySize - 1
+#
+#   prev=""
+#   for (( off = 0; off < N; off += MAX )); do
+#       n=$(( N - off < MAX ? N - off : MAX ))
+#       dep=${prev:+--dependency=afterany:$prev}
+#       prev=$(sbatch --parsable $dep --array=1-${n}%16 \
+#           scripts/run_antismash_array.sbatch "$CONTIGS" "$off")
+#       echo "chunk at offset $off -> job $prev"
+#   done
+#
 # Then convert every genome's output in one pass, from the S(H)ARP env:
 #   pixi run python scripts/merge_predictions.py --tool antismash \
 #       --input-dir ~/projects/antismash/out_benchmark \
@@ -61,7 +88,20 @@ ANTISMASH_DIR="$HOME/projects/antismash"
 SHARP_DIR="$HOME/projects/igem2026/git-clones/sharp"
 ANTISMASH_DB="$HOME/projects/databases/antismash/databases"
 
+# Read fresh by every task, at the moment that task starts -- NOT snapshotted
+# at submit time like the script body is. Editing this file while the array is
+# in flight shifts the line numbering under the tasks that have not started
+# yet, silently skipping some genomes and running others twice. Point it at a
+# frozen pool list and leave that file alone until the array drains.
 CONTIGS="${1:-$SHARP_DIR/data/interim/benchmark_set/analyzed_contigs.txt}"
+
+# Slurm caps the highest array index at MaxArraySize - 1 (commonly 1000), so a
+# pool larger than that needs more than one submission. Only the starting point
+# differs between them, so take it as an offset rather than slicing $CONTIGS
+# into per-chunk files -- one list stays the single source of truth, and there
+# is no derived copy to keep in sync or freeze separately.
+OFFSET="${2:-0}"
+
 GENOME_DIR="$SHARP_DIR/data/raw/genomes"
 OUTROOT="$ANTISMASH_DIR/out_benchmark"
 
@@ -71,10 +111,12 @@ if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     exit 1
 fi
 
-# One accession per line; this task takes the line matching its array index.
-ACCESSION="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$CONTIGS")"
+# One accession per line; this task takes the line at its index plus the offset.
+LINE=$(( SLURM_ARRAY_TASK_ID + OFFSET ))
+ACCESSION="$(sed -n "${LINE}p" "$CONTIGS")"
 if [[ -z "$ACCESSION" ]]; then
-    echo "ERROR: no accession at line ${SLURM_ARRAY_TASK_ID} of $CONTIGS" >&2
+    echo "ERROR: no accession at line ${LINE} of $CONTIGS" >&2
+    echo "       ($(wc -l < "$CONTIGS") lines; array index ${SLURM_ARRAY_TASK_ID}, offset ${OFFSET})" >&2
     exit 1
 fi
 
@@ -92,7 +134,7 @@ for path in "$ANTISMASH_DIR" "$ANTISMASH_DB" "$GENOME"; do
 done
 
 echo "Host:      $(hostname)"
-echo "Array idx: ${SLURM_ARRAY_TASK_ID}"
+echo "Array idx: ${SLURM_ARRAY_TASK_ID} (+${OFFSET} = line ${LINE})"
 echo "Accession: $ACCESSION"
 echo "Genome:    $GENOME"
 echo "Databases: $ANTISMASH_DB"
