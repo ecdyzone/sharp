@@ -238,3 +238,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Slurm job logs (job arrays produce two per task)
+logs/
+*.out
+*.err
