@@ -24,6 +24,7 @@ Click the links below for the interactive HTML pages:
   - [Run once, slice many](#run-once-slice-many--the-benchmarking-approach)
   - [Benchmarking in a shared clone](#benchmarking-in-a-shared-clone)
   - [Which genomes, and which slices](#which-genomes-and-which-slices)
+  - [Comparing tools without a ground truth](#comparing-tools-without-a-ground-truth)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -778,6 +779,107 @@ done
 To produce another benchmark from the same pool, change `SCOPE` and re-run
 these last two blocks — the arrays do not run again.
 
+### Comparing tools without a ground truth
+
+Sometimes the question is not "which tool is right" but "how much do these
+tools disagree over a large genome collection" — comparing baselines against a
+third tool over a database that has no MiBiG labels. There is then no recall
+and no precision, only raw counts, and raw counts mislead in three specific
+ways. Read these once before reading any number:
+
+1. **A region count is not a quality score.** With no labels, nothing here says
+   which tool is right. More calls is not better.
+2. **Counts are not commensurable across tools.** antiSMASH merges neighbouring
+   protoclusters into one region; DeepBGC emits separate candidates. Two tools
+   covering identical territory can differ ~2x in count and not at all in bp.
+   `frac_bp_called` is the fairer headline; report both.
+3. **A count is a threshold, not a fact.** DeepBGC's `deepbgc_score` and GECCO's
+   `average_p` move the count freely. antiSMASH is rule-based (`p_bgc = 1.0`),
+   so it is flat across thresholds. Sweep and report the curve, not one point.
+
+The flow reuses the normal pipeline; only the keying differs. A genome database
+is keyed by **assembly** while everything downstream is keyed by **contig**, so
+step 1 builds the manifest that bridges them.
+
+```bash
+# 1. Index the database and stage the symlinks the array scripts read.
+#    Verify the layout first — this is the prepare_mibig --inspect pattern.
+pixi run python scripts/build_genome_manifest.py \
+    --db-dir /databases/genomes/actinomycetota --inspect
+
+pixi run python scripts/build_genome_manifest.py \
+    --db-dir /databases/genomes/actinomycetota \
+    --output-dir data/interim/actino_db \
+    --link-dir data/raw/actino_db
+# → genomes.tsv (assembly,contig,length,description)   the join key
+#   assemblies.tsv (assembly,n_contigs,total_bp,organism,fasta)
+#   assemblies.txt        one assembly per line -> the job-array line list
+#   analyzed_contigs.txt  one contig per line   -> the --contigs scope file
+#   data/raw/actino_db/<assembly>.fasta -> symlinks into the database
+
+# 2. Run each baseline as a job array. The array scripts take the genome
+#    directory as $3, so the same scripts serve both layouts; the output pool
+#    is then keyed by assembly. See "Submitting a pool larger than
+#    MaxArraySize" in either script for the windowing loop.
+sbatch --array=1-1000%16 scripts/run_antismash_array.sbatch \
+    data/interim/actino_db/assemblies.txt 0 data/raw/actino_db
+
+# 3. Merge. --manifest is REQUIRED for an assembly-keyed pool: without it the
+#    "produced no output" check compares contigs against assembly directory
+#    names and reports every genome as missing.
+pixi run python scripts/merge_predictions.py --tool antismash \
+    --input-dir ~/projects/antismash/out_actino \
+    --contigs data/interim/actino_db/analyzed_contigs.txt \
+    --manifest data/interim/actino_db/genomes.tsv \
+    --output data/interim/antismash_predictions_actino.parquet
+
+# 4. The comparison table. This is the deliverable: hand a collaborator
+#    genomes.tsv and ask for the same two files back.
+pixi run python scripts/summarize_predictions.py \
+    --manifest data/interim/actino_db/genomes.tsv \
+    --predictions antismash=data/interim/antismash_predictions_actino.parquet \
+                  deepbgc=data/interim/deepbgc_predictions_actino.parquet \
+    --thresholds 0.0 0.5 0.8 \
+    --output-dir data/processed/actino_comparison
+# → summary_by_tool.tsv      one row per (tool, threshold) — the headline
+#   summary_by_assembly.tsv  one row per (assembly, tool, threshold)
+```
+
+A large "absent from the manifest" warning in step 4 means the contig
+identifiers disagree (a dropped `.1` version suffix is the usual cause), not
+that the tool was quiet. Fix that before reading anything else.
+
+#### Tool-vs-tool agreement
+
+`evaluate.py` does not care what the reference *means*, only that it is a set
+of intervals, so one tool's predictions can serve as another's reference and no
+new metric code is needed:
+
+```bash
+pixi run python scripts/predictions_to_ground_truth.py \
+    --input data/interim/antismash_predictions_actino.parquet \
+    --output data/interim/agreement/antismash_as_gt.tsv --prefix antismash
+
+pixi run python -m sharp.evaluate \
+    --predictions data/interim/deepbgc_predictions_actino.parquet \
+    --ground-truth data/interim/agreement/antismash_as_gt.tsv \
+    --contigs data/interim/actino_db/analyzed_contigs.txt \
+    --output data/processed/actino_comparison/agreement_deepbgc_vs_antismash.json
+```
+
+**Read that JSON with the field names translated.** `detection.recall` is now
+the fraction of antiSMASH regions DeepBGC also called — agreement with a tool,
+not with truth — and `matched_prediction_frac` is the converse. Run it both
+ways: the two directions are different numbers, and for a new tool the
+interesting one is usually the asymmetry, what it calls that the established
+tool does not.
+
+Expect `detection.recall` to understate agreement wherever one tool splits what
+the other merges: two DeepBGC candidates covering one antiSMASH region fail the
+`min_cluster_frac` test individually while covering it jointly. `evaluate.py`
+logs exactly that case ("covered only by several predictions together"), and
+`nucleotide.recall` is the number that does not care about granularity.
+
 ## Utilities
 
 ### Converting Parquet to TSV
@@ -857,6 +959,7 @@ pixi run pytest
 ├── pyproject.toml
 ├── README.md
 ├── scripts
+│   ├── build_genome_manifest.py          # genome database -> assembly/contig manifest + symlink farm
 │   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
 │   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
@@ -869,9 +972,11 @@ pixi run pytest
 │   ├── run_benchmark.sh                  # score one scope against the shared pool (merge + evaluate)
 │   ├── generate_mock_data.py
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
+│   ├── predictions_to_ground_truth.py    # one tool's predictions as a reference, for tool-vs-tool agreement
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
 │   ├── select_benchmark_genomes.py       # ground truth -> benchmark genome set + scope + normalized GT
+│   ├── summarize_predictions.py          # raw tool-vs-tool counts over a genome database (no ground truth)
 │   ├── _fetch_nuccore.sh          # sourced by the downloaders: efetch + "is this really FASTA" check
 │   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
 │   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
@@ -900,6 +1005,7 @@ pixi run pytest
     │   ├── deepbgc_predictions.parquet      # converted real output, benchmark regression
     │   ├── gecco_predictions.parquet        # converted real output, benchmark regression
     │   └── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
+    ├── test_build_genome_manifest.py
     ├── test_config.py
     ├── test_convert_antismash.py
     ├── test_convert_deepbgc.py
@@ -912,9 +1018,11 @@ pixi run pytest
     ├── test_metrics.py
     ├── test_model_management.py
     ├── test_parquet_to_tsv.py
+    ├── test_predictions_to_ground_truth.py
     ├── test_prepare_bgcatlas.py
     ├── test_prepare_mibig.py
-    └── test_select_benchmark_genomes.py
+    ├── test_select_benchmark_genomes.py
+    └── test_summarize_predictions.py
 ```
 
 ## Currently Working on
