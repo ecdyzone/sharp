@@ -107,6 +107,29 @@ class TestReportMissing:
         # the latter needs reporting.
         assert report_missing({"A": 0}, ["A"]) == []
 
+    def test_assembly_keyed_pool_needs_the_manifest(self) -> None:
+        # The pool directory is the key the array ran on. For a genome
+        # database that is the assembly, which never equals a contig — so
+        # without the manifest every contig looks missing.
+        counts = {"GCF_000009765.2": 3}
+        contigs = ["NC_003155.5", "NC_004719.1"]
+        assert report_missing(counts, contigs) == contigs
+
+    def test_manifest_maps_assemblies_back_to_contigs(self) -> None:
+        counts = {"GCF_000009765.2": 3}
+        manifest = {"GCF_000009765.2": ["NC_003155.5", "NC_004719.1"]}
+        got = report_missing(counts, ["NC_003155.5", "NC_004719.1"], manifest)
+        assert got == []
+
+    def test_manifest_still_names_an_assembly_that_never_ran(self) -> None:
+        counts = {"GCF_000009765.2": 3}
+        manifest = {
+            "GCF_000009765.2": ["NC_003155.5"],
+            "GCF_041549525.1": ["NZ_CP157456.1"],
+        }
+        got = report_missing(counts, ["NC_003155.5", "NZ_CP157456.1"], manifest)
+        assert got == ["NZ_CP157456.1"]
+
     def test_empty_scope_reports_nothing(self) -> None:
         assert report_missing({"A": 1}, []) == []
 

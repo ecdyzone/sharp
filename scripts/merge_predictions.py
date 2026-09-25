@@ -34,6 +34,14 @@ Usage:
         --input-dir ~/projects/deepbgc/out_benchmark \\
         --contigs data/interim/benchmark_set/analyzed_contigs.txt \\
         --output data/interim/deepbgc_predictions.parquet
+
+    # A pool keyed by assembly (a genome database) needs the manifest so the
+    # scope file's contigs can be mapped back to the directory names
+    python scripts/merge_predictions.py --tool antismash \\
+        --input-dir ~/projects/antismash/out_actino \\
+        --contigs data/interim/actino_db/analyzed_contigs.txt \\
+        --manifest data/interim/actino_db/genomes.tsv \\
+        --output data/interim/antismash_predictions_actino.parquet
 """
 from __future__ import annotations
 
@@ -50,6 +58,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import convert_antismash_to_parquet as _antismash  # noqa: E402
 import convert_deepbgc_to_parquet as _deepbgc  # noqa: E402
 import convert_gecco_to_parquet as _gecco  # noqa: E402
+from build_genome_manifest import load_genomes_tsv  # noqa: E402
 from sharp.config import INTERIM_DIR  # noqa: E402
 from sharp.io import PredictedRegion, write_predictions_parquet  # noqa: E402
 
@@ -126,13 +135,30 @@ def merge(
     return regions, counts, failures
 
 
-def report_missing(counts: dict[str, int], contigs: list[str]) -> list[str]:
-    """Accessions in the scope file with no output directory at all.
+def report_missing(
+    counts: dict[str, int],
+    contigs: list[str],
+    manifest: dict[str, list[str]] | None = None,
+) -> list[str]:
+    """Scope entries with no output directory at all.
 
     Worth surfacing loudly: the recall denominator comes from `--contigs`, not
     from the predictions, so a genome whose run never completed is scored as
     though the tool looked and found nothing.
+
+    The pool directory name is the key the array ran on. For the MiBiG
+    benchmark set that key *is* the contig accession, so scope entries can be
+    looked up in `counts` directly. For a genome database the key is the
+    assembly, which holds many contigs and never equals one — without
+    `manifest` every contig would then be reported missing, which is both a
+    false alarm and a way to hide the real ones. `manifest` maps assembly ->
+    contigs (from `genomes.tsv`) and closes that gap.
     """
+    if manifest is not None:
+        covered: set[str] = set()
+        for key in counts:
+            covered.update(manifest.get(key, ()))
+        return [c for c in contigs if c not in covered]
     return [c for c in contigs if c not in counts]
 
 
@@ -144,6 +170,7 @@ def run(
     output_path: Path | None,
     contigs_path: Path | None,
     do_inspect: bool,
+    manifest_path: Path | None = None,
 ) -> None:
     if not input_dir.is_dir():
         raise SystemExit(f"not a directory: {input_dir}")
@@ -151,7 +178,8 @@ def run(
     regions, counts, failures = merge(input_dir, tool)
 
     contigs = load_contigs(contigs_path) if contigs_path else []
-    missing = report_missing(counts, contigs) if contigs else []
+    manifest = load_genomes_tsv(manifest_path) if manifest_path else None
+    missing = report_missing(counts, contigs, manifest) if contigs else []
 
     LOG.info("%s: %d genome dir(s), %d region(s) total",
              tool, len(counts), len(regions))
@@ -204,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="scope file; genomes listed here with no output are "
                         "reported, since they would otherwise look like the "
                         "tool found nothing")
+    p.add_argument("--manifest", type=Path, default=None,
+                   help="genomes.tsv from build_genome_manifest.py; required "
+                        "when the pool is keyed by assembly rather than by "
+                        "contig accession, so --contigs can be checked against "
+                        "the right key")
     p.add_argument("--inspect", action="store_true",
                    help="print the per-genome region counts and write nothing")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -223,6 +256,7 @@ def main() -> None:
         output_path=args.output,
         contigs_path=args.contigs,
         do_inspect=args.inspect,
+        manifest_path=args.manifest,
     )
 
 
