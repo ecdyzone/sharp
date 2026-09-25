@@ -822,7 +822,11 @@ pixi run python scripts/build_genome_manifest.py \
 #    is then keyed by assembly. See "Submitting a pool larger than
 #    MaxArraySize" in either script for the windowing loop.
 sbatch --array=1-1000%16 scripts/run_antismash_array.sbatch \
-    data/interim/actino_db/assemblies.txt 0 data/raw/actino_db
+    data/interim/actino_db/assemblies.txt 0 data/raw/actino_db \
+    ~/projects/antismash/out_actino
+#    $4 is the pool root. Give a separate campaign its own pool: merge below
+#    converts EVERY directory under --input-dir, so two genome sets sharing one
+#    pool land in each other's predictions file.
 
 # 3. Merge. --manifest is REQUIRED for an assembly-keyed pool: without it the
 #    "produced no output" check compares contigs against assembly directory

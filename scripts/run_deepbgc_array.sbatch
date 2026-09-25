@@ -11,7 +11,8 @@
 #   sbatch --array=1-50%8 scripts/run_deepbgc_array.sbatch /path/to/contigs.txt
 #
 # Args: $1 = genome list (default below), $2 = index offset (default 0),
-#       $3 = genome directory (default below).
+#       $3 = genome directory (default below),
+#       $4 = output pool root (default below).
 #
 # ── Running over a genome database instead of the MiBiG benchmark set ───────
 # The list is one *key* per line and the genome is `$3/<key>.fasta`, so the same
@@ -22,7 +23,7 @@
 #
 #   sbatch --array=1-1000%24 scripts/run_deepbgc_array.sbatch \
 #       "$SHARP/data/interim/actino_db/assemblies.txt" 0 \
-#       "$SHARP/data/raw/actino_db"
+#       "$SHARP/data/raw/actino_db" "$DEEPBGC_DIR/out_actino"
 #
 # The output pool is then keyed by assembly rather than by contig accession.
 # That is fine for every downstream step except `merge_predictions.py`'s
@@ -123,7 +124,12 @@ OFFSET="${2:-0}"
 # Where `<key>.fasta` lives. Overridable so this script can run over a genome
 # database staged as symlinks (see the header) without a second copy of itself.
 GENOME_DIR="${3:-$SHARP_DIR/data/raw/genomes}"
-OUTROOT="$DEEPBGC_DIR/out_benchmark"
+# The output pool root. Overridable so a separate campaign gets its own
+# pool: merge_predictions.py converts EVERY directory under --input-dir
+# (--contigs only drives the missing-genome report, it does not filter
+# the parquet), so two genome sets sharing one pool end up in each
+# other's predictions file.
+OUTROOT="${4:-$DEEPBGC_DIR/out_benchmark}"
 
 if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     echo "ERROR: not running as a job array. Submit with --array, e.g." >&2
@@ -160,6 +166,7 @@ echo "Array idx: ${SLURM_ARRAY_TASK_ID} (+${OFFSET} = line ${LINE})"
 echo "Genome key: $GENOME_KEY"
 echo "Genome:    $GENOME"
 echo "Output:    $OUTDIR"
+echo "Pool:      $OUTROOT"
 echo "CPUs:      ${SLURM_CPUS_PER_TASK:-?}"
 echo
 
