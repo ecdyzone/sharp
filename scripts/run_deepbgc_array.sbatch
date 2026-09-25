@@ -10,7 +10,24 @@
 # Or against another set / list:
 #   sbatch --array=1-50%8 scripts/run_deepbgc_array.sbatch /path/to/contigs.txt
 #
-# Args: $1 = contigs list (default below), $2 = index offset (default 0).
+# Args: $1 = genome list (default below), $2 = index offset (default 0),
+#       $3 = genome directory (default below).
+#
+# ── Running over a genome database instead of the MiBiG benchmark set ───────
+# The list is one *key* per line and the genome is `$3/<key>.fasta`, so the same
+# script covers both layouts. For a database of NCBI assembly dumps (one
+# directory per assembly), `scripts/build_genome_manifest.py --link-dir` stages
+# exactly that shape — `<link-dir>/<assembly>.fasta` symlinks — and emits the
+# matching `assemblies.txt`:
+#
+#   sbatch --array=1-1000%24 scripts/run_deepbgc_array.sbatch \
+#       "$SHARP/data/interim/actino_db/assemblies.txt" 0 \
+#       "$SHARP/data/raw/actino_db"
+#
+# The output pool is then keyed by assembly rather than by contig accession.
+# That is fine for every downstream step except `merge_predictions.py`'s
+# "produced no output" report, which needs `--manifest genomes.tsv` to map an
+# assembly back to its contigs.
 #
 # ── Submitting a pool larger than MaxArraySize ──────────────────────────────
 # Slurm's MaxArraySize (commonly 1001) caps the highest legal array *index* at
@@ -103,7 +120,9 @@ CONTIGS="${1:-$SHARP_DIR/data/interim/benchmark_set/analyzed_contigs.txt}"
 # is no derived copy to keep in sync or freeze separately.
 OFFSET="${2:-0}"
 
-GENOME_DIR="$SHARP_DIR/data/raw/genomes"
+# Where `<key>.fasta` lives. Overridable so this script can run over a genome
+# database staged as symlinks (see the header) without a second copy of itself.
+GENOME_DIR="${3:-$SHARP_DIR/data/raw/genomes}"
 OUTROOT="$DEEPBGC_DIR/out_benchmark"
 
 if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
@@ -112,20 +131,21 @@ if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     exit 1
 fi
 
-# One accession per line; this task takes the line at its index plus the offset.
+# One key per line (contig accession, or assembly for a genome database);
+# this task takes the line at its index plus the offset.
 LINE=$(( SLURM_ARRAY_TASK_ID + OFFSET ))
-ACCESSION="$(sed -n "${LINE}p" "$CONTIGS")"
-if [[ -z "$ACCESSION" ]]; then
-    echo "ERROR: no accession at line ${LINE} of $CONTIGS" >&2
+GENOME_KEY="$(sed -n "${LINE}p" "$CONTIGS")"
+if [[ -z "$GENOME_KEY" ]]; then
+    echo "ERROR: no genome key at line ${LINE} of $CONTIGS" >&2
     echo "       ($(wc -l < "$CONTIGS") lines; array index ${SLURM_ARRAY_TASK_ID}, offset ${OFFSET})" >&2
     exit 1
 fi
 
-GENOME="$GENOME_DIR/${ACCESSION}.fasta"
+GENOME="$GENOME_DIR/${GENOME_KEY}.fasta"
 # DeepBGC names its output files after the basename of --output, so a per-genome
 # directory gives <ACC>/<ACC>.bgc.tsv and keeps the runs from colliding.
-OUTDIR="$OUTROOT/${ACCESSION}"
-RESULT="$OUTDIR/${ACCESSION}.bgc.tsv"
+OUTDIR="$OUTROOT/${GENOME_KEY}"
+RESULT="$OUTDIR/${GENOME_KEY}.bgc.tsv"
 
 # ── Preflight ───────────────────────────────────────────────────────────────
 for path in "$DEEPBGC_DIR" "$DEEPBGC_DOWNLOADS_DIR" "$GENOME"; do
@@ -137,7 +157,7 @@ done
 
 echo "Host:      $(hostname)"
 echo "Array idx: ${SLURM_ARRAY_TASK_ID} (+${OFFSET} = line ${LINE})"
-echo "Accession: $ACCESSION"
+echo "Genome key: $GENOME_KEY"
 echo "Genome:    $GENOME"
 echo "Output:    $OUTDIR"
 echo "CPUs:      ${SLURM_CPUS_PER_TASK:-?}"
