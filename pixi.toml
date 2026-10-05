@@ -31,3 +31,25 @@ transformers = ">=5.9.0, <6"
 fair-esm = ">=2.0.0, <3"
 pytest = ">=9.0.3, <10"
 dvc = ">=3.67.1, <4"
+
+# ── report: figures for the wiki / papers ──────────────────────────────────
+# Its own environment so plotting does not pull pytorch or bakta onto a laptop
+# that only holds a copy of the benchmark outputs:
+#   pixi run -e report python scripts/plot_report_figures.py ...
+# The default environment includes it too, so `pixi run pytest` covers the
+# report scripts' tests.
+[feature.report.dependencies]
+python = "3.11.*"
+numpy = ">=2.4.6,<3"
+pyarrow = ">=20.0.0,<21"
+pandas = ">=2.2,<3"
+matplotlib = ">=3.9,<4"
+seaborn = ">=0.13,<0.14"
+pytest = ">=9.0.3,<10"
+
+[feature.report.pypi-dependencies]
+sharp = { path = ".", editable = true }
+
+[environments]
+default = { features = ["report"], solve-group = "default" }
+report = { features = ["report"], no-default-feature = true }
