@@ -43,6 +43,7 @@ from pathlib import Path
 
 from sharp.io import (
     KnownCluster,
+    PredictedRegion,
     load_predictions_parquet,
     write_ground_truth_tsv,
 )
@@ -59,6 +60,14 @@ def to_clusters(
     there is nothing to convert and nothing to get wrong.
     """
     regions = [r for r in load_predictions_parquet(path) if r.p_bgc >= min_p_bgc]
+    return regions_to_clusters(regions, prefix)
+
+
+def regions_to_clusters(
+    regions: list[PredictedRegion], prefix: str | None = None
+) -> list[KnownCluster]:
+    """The in-memory half of `to_clusters`, for callers that already hold the
+    regions (e.g. build_report_tables.py scoring every pair of tools)."""
     return [
         KnownCluster(
             # Prefixing keeps the origin visible in a merged table and stops
