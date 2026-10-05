@@ -173,6 +173,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/summarize_predictions.py` | Raw tool-vs-tool comparison over a genome database when there is **no ground truth** — no recall, no precision. Per (tool, threshold): `n_regions`, `bp_called` (merged intervals), `regions_per_Mb`, `frac_bp_called`, `median_region_bp`; plus a per-assembly table. Reports bp as well as counts because antiSMASH merges protoclusters while DeepBGC splits them, so counts are not commensurable; sweeps `--thresholds` because a scored tool's count is a knob. Warns loudly when predictions do not join the manifest (dropped version suffix) | `test_summarize_predictions.py` |
 | `scripts/predictions_to_ground_truth.py` | One tool's `predictions.parquet` → ground-truth-shaped TSV, so `evaluate.py` measures **tool-vs-tool agreement** with no new metric code (coords pass through — both types are 0-based half-open). The resulting JSON's `recall` means agreement with a tool, not with truth; run both directions | `test_predictions_to_ground_truth.py` |
 | `scripts/build_report_tables.py` | Benchmark outputs → the tidy TSVs behind report figures (wiki/paper). Two subcommands: `mibig` (same GT, `--contigs` scope and match defaults as `sharp.evaluate`, so it reproduces the JSON exactly: `mibig_metrics.tsv`, `mibig_by_class.tsv`, `mibig_threshold_sweep.tsv`) and `raw` (no GT, reuses `summarize()`: `raw_totals.tsv`, `raw_by_class.tsv`, `raw_by_genus.tsv`, `raw_agreement.tsv` — the README's tool-vs-tool method in memory, every ordered pair). `--thresholds DeepBGC=0.5,0.8` makes one *series* per cutoff; an unscored tool is one series. **`--placeholder` (default `SHARP`) writes all-zero `status=placeholder` rows** so the figures already have its slot; fill it by passing `SHARP=<parquet>` or by hand-editing the TSVs. Classes from antiSMASH products (antiSMASH 8's own rule `CATEGORY`s), DeepBGC `product_class` and MiBIG classes map onto one vocabulary (`CLASS_LOOKUP`): PKS, NRPS, RiPP, Terpene, Saccharide, Other, Hybrid, Unclassified; unknown names are logged and filed under Other. Runs in the light `report` env (`pixi run -e report`) | `test_build_report_tables.py` |
+| `scripts/plot_report_figures.py` | Report TSVs → figures (PNG + SVG): `mibig_metrics`, `mibig_by_class`, `mibig_threshold_sweep`, `raw_totals`, `raw_by_class`, `raw_by_genus`, `raw_agreement`. Pure presentation — reads only `build_report_tables.py` output, so hand-edited tables re-plot without touching benchmark outputs; a missing table skips its figures. Colours are fixed **per tool** (`TOOL_COLORS`: antiSMASH blue, DeepBGC orange, SHARP aqua; validated for CVD), extra cutoffs of one tool are a darker hatched variant. A series is "pending" only while `status=placeholder` **and** all-zero, so typed-in numbers appear without editing `status`. `--only`, `--formats`, `--dpi` | `test_plot_report_figures.py` |
 
 ---
 
@@ -657,4 +658,9 @@ pixi run -e report python scripts/build_report_tables.py raw \
     --thresholds DeepBGC=0.5,0.8 \
     --output-dir data/processed/report/tables
 #   SHARP is an all-zero placeholder until passed as SHARP=<parquet>
+
+# Report figures, step 2: draw whatever tables are present
+pixi run -e report python scripts/plot_report_figures.py \
+    --tables-dir data/processed/report/tables \
+    --output-dir data/processed/report/figures
 ```

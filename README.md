@@ -894,7 +894,8 @@ yet still has its slot:
 1. `scripts/build_report_tables.py` recomputes every number with the same
    functions behind `benchmark.json` and `summary_by_tool.tsv`
    (`evaluate_predictions`, `summarize`) and writes small tidy TSVs.
-2. Plotting reads only those TSVs.
+2. `scripts/plot_report_figures.py` reads only those TSVs and draws the
+   figures (PNG + SVG).
 
 Both run in the light `report` environment (`pixi run -e report ...`), which
 has pandas/matplotlib/seaborn but not pytorch or bakta, so they work on a
@@ -919,7 +920,32 @@ pixi run -e report python scripts/build_report_tables.py raw \
     --thresholds DeepBGC=0.5,0.8 \
     --output-dir data/processed/report/tables
 # → raw_totals.tsv, raw_by_class.tsv, raw_by_genus.tsv, raw_agreement.tsv
+
+# Figures from whatever tables are present (a missing table skips its figures)
+pixi run -e report python scripts/plot_report_figures.py \
+    --tables-dir data/processed/report/tables \
+    --output-dir data/processed/report/figures
+
+# Only some figures, PNG only
+pixi run -e report python scripts/plot_report_figures.py \
+    --tables-dir data/processed/report/tables \
+    --output-dir data/processed/report/figures \
+    --only mibig_by_class raw_by_class --formats png
 ```
+
+| figure | shows |
+|---|---|
+| `mibig_metrics` | headline rates per tool, and how many regions / Mb each called vs. the known clusters |
+| `mibig_by_class` | MiBIG clusters per BGC class (gray) and how many each tool found |
+| `mibig_threshold_sweep` | detection recall, matched fraction and call count as a scored tool's cutoff rises |
+| `raw_totals` | regions called, share of all sequence called, median region length |
+| `raw_by_class` | regions per BGC class, per series |
+| `raw_by_genus` | mean regions per genome for the most-sampled genera |
+| `raw_agreement` | share of each series' called bp (and regions) that another series also called |
+
+Colours follow the tool, not its position (antiSMASH blue, DeepBGC orange,
+SHARP aqua; extra cutoffs of one tool are a darker, hatched variant), checked
+with a colour-vision-deficiency validator.
 
 The names before `=` are the labels drawn in the figures. `--thresholds
 DeepBGC=0.5,0.8` turns DeepBGC into two series; antiSMASH has no score and is
@@ -933,7 +959,9 @@ under Other.
 with `status=placeholder`. To fill it, either pass its predictions like any
 other tool (`SHARP=data/interim/sharp_predictions.parquet`, which drops the
 placeholder), or type its numbers into the TSVs by hand and re-run only the
-plotting step.
+plotting step. A series is drawn as "pending" only while its rows are flagged
+`placeholder` *and* all zero, so typed-in numbers show up without editing the
+`status` column.
 
 **Switching scope** (e.g. from the 50-genome test set to the full pool) is only
 a matter of pointing `--ground-truth`, `--contigs` and `--predictions` at the
@@ -1034,6 +1062,7 @@ pixi run pytest
 │   ├── run_benchmark.sh                  # score one scope against the shared pool (merge + evaluate)
 │   ├── generate_mock_data.py
 │   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
+│   ├── plot_report_figures.py            # report TSVs -> figures (PNG + SVG) for the wiki / papers
 │   ├── predictions_to_ground_truth.py    # one tool's predictions as a reference, for tool-vs-tool agreement
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
@@ -1081,6 +1110,7 @@ pixi run pytest
     ├── test_metrics.py
     ├── test_model_management.py
     ├── test_parquet_to_tsv.py
+    ├── test_plot_report_figures.py
     ├── test_predictions_to_ground_truth.py
     ├── test_prepare_bgcatlas.py
     ├── test_prepare_mibig.py
