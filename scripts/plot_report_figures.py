@@ -5,13 +5,13 @@ Pure presentation: every number is read from the tidy TSVs that
 `build_report_tables.py` writes, so this script can be re-run after editing a
 table by hand (e.g. typing in S(H)ARP's numbers) without touching the
 benchmark outputs. A figure whose table is missing is skipped with a warning,
-so the MiBIG and the raw-comparison tables can live in different directories
+so the MIBiG and the raw-comparison tables can live in different directories
 or be built at different times.
 
 Figures (each written as <name>.png and <name>.svg):
 
     mibig_metrics          headline rates per tool + how much each tool called
-    mibig_by_class         MiBIG clusters per BGC class, and how many each tool found
+    mibig_by_class         MIBiG clusters per BGC class, and how many each tool found
     mibig_threshold_sweep  the same rates as a scored tool's cutoff rises
     raw_totals             regions called, share of sequence called, region length
     raw_by_class           regions per BGC class, per series
@@ -70,7 +70,7 @@ TEXT_2 = "#52514e"
 MUTED = "#898781"
 GRID = "#e1e0d9"
 BASELINE = "#c3c2b7"
-REFERENCE = "#bdbcb4"            # MiBIG / "known" bars: de-emphasis gray
+REFERENCE = "#bdbcb4"            # MIBiG / "known" bars: de-emphasis gray
 
 # Tool identity. Fixed per tool, never by rank, so a tool keeps its colour
 # when another is added or removed.
@@ -255,7 +255,7 @@ def legend_top(fig: plt.Figure, ax: plt.Axes, y: float = 0.895) -> None:
                bbox_to_anchor=(0.005, y), handlelength=1.2, columnspacing=1.6)
 
 
-# ═══════════════════════════════ MiBIG ═════════════════════════════════════
+# ═══════════════════════════════ MIBiG ═════════════════════════════════════
 
 MIBIG_RATES = [
     ("detection_recall", "Clusters found\n(detection recall)"),
@@ -269,7 +269,7 @@ MIBIG_RATES = [
 
 def _mibig_scope(df: pd.DataFrame) -> str:
     row = df.iloc[0]
-    return (f"{int(row['n_clusters']):,} MiBIG clusters on "
+    return (f"{int(row['n_clusters']):,} MIBiG clusters on "
             f"{int(row['n_contigs']):,} sequences")
 
 
@@ -300,9 +300,9 @@ def fig_mibig_metrics(t: dict[str, pd.DataFrame]) -> plt.Figure:
     known_n = int(df["n_clusters"].iloc[0])
     known_mb = float(df["gt_bp"].iloc[0]) / 1e6
     for col, (field, ref, ref_label, unit, label) in enumerate([
-        ("n_predictions", known_n, "MiBIG clusters", "",
+        ("n_predictions", known_n, "MIBiG clusters", "",
          "b   Regions called"),
-        ("predicted_bp", known_mb, "MiBIG clusters", " Mb",
+        ("predicted_bp", known_mb, "MIBiG clusters", " Mb",
          "c   Sequence called (Mb)"),
     ]):
         axv = fig.add_subplot(gs[1, col])
@@ -325,7 +325,7 @@ def fig_mibig_metrics(t: dict[str, pd.DataFrame]) -> plt.Figure:
         axv.set_title(label, pad=8)
         axv.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
     legend_top(fig, ax, y=0.875)
-    title(fig, "Benchmark against MiBIG",
+    title(fig, "Benchmark against MIBiG",
           _mibig_scope(df) + " · a cluster is found when one call covers ≥50% of it")
     return fig
 
@@ -343,12 +343,12 @@ def fig_mibig_by_class(t: dict[str, pd.DataFrame]) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(11, 5.6))
     fig.subplots_adjust(left=0.06, right=0.985, top=0.84, bottom=0.12)
     grouped_bars(ax, labels, styles, values, fmt=lambda v: f"{v:.0f}",
-                 reference=("MiBIG clusters", known.reindex(classes).astype(float).tolist()))
+                 reference=("MIBiG clusters", known.reindex(classes).astype(float).tolist()))
     ax.set_ylabel("Clusters")
     ax.set_ylim(0, float(known.max()) * 1.12)
     legend_top(fig, ax, y=0.90)
     title(fig, "Known clusters found per BGC class",
-          f"{int(known.sum()):,} MiBIG clusters · gray = clusters in MiBIG, "
+          f"{int(known.sum()):,} MIBiG clusters · gray = clusters in MIBiG, "
           "colours = clusters each tool found")
     return fig
 
@@ -464,7 +464,7 @@ def fig_raw_by_class(t: dict[str, pd.DataFrame]) -> plt.Figure:
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
     legend_top(fig, ax, y=0.90)
     title(fig, "Regions called per BGC class",
-          "Each tool's own class names mapped onto MiBIG's classes · "
+          "Each tool's own class names mapped onto MIBiG's classes · "
           "Hybrid = more than one class · clipped bars show their true value")
     return fig
 
