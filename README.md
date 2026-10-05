@@ -25,6 +25,7 @@ Click the links below for the interactive HTML pages:
   - [Benchmarking in a shared clone](#benchmarking-in-a-shared-clone)
   - [Which genomes, and which slices](#which-genomes-and-which-slices)
   - [Comparing tools without a ground truth](#comparing-tools-without-a-ground-truth)
+  - [Report tables and figures](#report-tables-and-figures)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -884,6 +885,62 @@ the other merges: two DeepBGC candidates covering one antiSMASH region fail the
 logs exactly that case ("covered only by several predictions together"), and
 `nucleotide.recall` is the number that does not care about granularity.
 
+### Report tables and figures
+
+Figures for the wiki, a paper or slides are made in two steps, so that a figure
+can never disagree with the result it illustrates and a tool with no results
+yet still has its slot:
+
+1. `scripts/build_report_tables.py` recomputes every number with the same
+   functions behind `benchmark.json` and `summary_by_tool.tsv`
+   (`evaluate_predictions`, `summarize`) and writes small tidy TSVs.
+2. Plotting reads only those TSVs.
+
+Both run in the light `report` environment (`pixi run -e report ...`), which
+has pandas/matplotlib/seaborn but not pytorch or bakta, so they work on a
+laptop that holds only a copy of the benchmark outputs.
+
+```bash
+# MiBIG benchmark: the same ground truth and scope as sharp.evaluate
+pixi run -e report python scripts/build_report_tables.py mibig \
+    --ground-truth data/interim/benchmark_set/benchmark_ground_truth.tsv \
+    --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+    --predictions antiSMASH=data/interim/antismash_predictions_benchmark_set.parquet \
+                  DeepBGC=data/interim/deepbgc_predictions_benchmark_set.parquet \
+    --output-dir data/processed/report/tables
+# → mibig_metrics.tsv, mibig_by_class.tsv, mibig_threshold_sweep.tsv
+
+# Raw comparison over a genome database (no ground truth)
+pixi run -e report python scripts/build_report_tables.py raw \
+    --manifest data/interim/actino_db/genomes.tsv \
+    --assemblies data/interim/actino_db/assemblies.tsv \
+    --predictions antiSMASH=data/interim/antismash_predictions_actino.parquet \
+                  DeepBGC=data/interim/deepbgc_predictions_actino.parquet \
+    --thresholds DeepBGC=0.5,0.8 \
+    --output-dir data/processed/report/tables
+# → raw_totals.tsv, raw_by_class.tsv, raw_by_genus.tsv, raw_agreement.tsv
+```
+
+The names before `=` are the labels drawn in the figures. `--thresholds
+DeepBGC=0.5,0.8` turns DeepBGC into two series; antiSMASH has no score and is
+always one. BGC classes from every tool (antiSMASH product types, DeepBGC
+`product_class`, MiBIG classes) are put on one vocabulary: PKS, NRPS, RiPP,
+Terpene, Saccharide, Other, Hybrid, Unclassified. antiSMASH products follow
+antiSMASH's own rule categories; a name not in the table is logged and filed
+under Other.
+
+**The S(H)ARP slot.** `--placeholder` (default `SHARP`) writes all-zero rows
+with `status=placeholder`. To fill it, either pass its predictions like any
+other tool (`SHARP=data/interim/sharp_predictions.parquet`, which drops the
+placeholder), or type its numbers into the TSVs by hand and re-run only the
+plotting step.
+
+**Switching scope** (e.g. from the 50-genome test set to the full pool) is only
+a matter of pointing `--ground-truth`, `--contigs` and `--predictions` at the
+other scope's files. Score the pool through a scope with BGC-only deposits
+removed (`benchmark_set_bact`, see [BENCHMARK_SCOPES.md](docs/BENCHMARK_SCOPES.md)),
+not `pool_bact` itself, or every tool's detection recall drifts toward 1.0.
+
 ## Utilities
 
 ### Converting Parquet to TSV
@@ -964,6 +1021,7 @@ pixi run pytest
 ├── README.md
 ├── scripts
 │   ├── build_genome_manifest.py          # genome database -> assembly/contig manifest + symlink farm
+│   ├── build_report_tables.py            # benchmark outputs -> tidy TSVs behind the report figures
 │   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
 │   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
@@ -1010,6 +1068,7 @@ pixi run pytest
     │   ├── gecco_predictions.parquet        # converted real output, benchmark regression
     │   └── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
     ├── test_build_genome_manifest.py
+    ├── test_build_report_tables.py
     ├── test_config.py
     ├── test_convert_antismash.py
     ├── test_convert_deepbgc.py

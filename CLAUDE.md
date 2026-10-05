@@ -172,6 +172,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/build_genome_manifest.py` | Genome database (one NCBI assembly dump directory per genome) → `genomes.tsv` (assembly, contig, length, description), `assemblies.tsv`, `assemblies.txt` (job-array line list), `analyzed_contigs.txt` (scope file). Parses **only the `.fna`** (headers + streamed lengths; the `.gbff` is 2-5x larger and carries nothing needed). `--link-dir` stages `<assembly>.fasta` symlinks so the array scripts run over the database unchanged. Key is the GCF/GCA **accession**, not the directory name. `--inspect`/`--limit` modes | `test_build_genome_manifest.py` |
 | `scripts/summarize_predictions.py` | Raw tool-vs-tool comparison over a genome database when there is **no ground truth** — no recall, no precision. Per (tool, threshold): `n_regions`, `bp_called` (merged intervals), `regions_per_Mb`, `frac_bp_called`, `median_region_bp`; plus a per-assembly table. Reports bp as well as counts because antiSMASH merges protoclusters while DeepBGC splits them, so counts are not commensurable; sweeps `--thresholds` because a scored tool's count is a knob. Warns loudly when predictions do not join the manifest (dropped version suffix) | `test_summarize_predictions.py` |
 | `scripts/predictions_to_ground_truth.py` | One tool's `predictions.parquet` → ground-truth-shaped TSV, so `evaluate.py` measures **tool-vs-tool agreement** with no new metric code (coords pass through — both types are 0-based half-open). The resulting JSON's `recall` means agreement with a tool, not with truth; run both directions | `test_predictions_to_ground_truth.py` |
+| `scripts/build_report_tables.py` | Benchmark outputs → the tidy TSVs behind report figures (wiki/paper). Two subcommands: `mibig` (same GT, `--contigs` scope and match defaults as `sharp.evaluate`, so it reproduces the JSON exactly: `mibig_metrics.tsv`, `mibig_by_class.tsv`, `mibig_threshold_sweep.tsv`) and `raw` (no GT, reuses `summarize()`: `raw_totals.tsv`, `raw_by_class.tsv`, `raw_by_genus.tsv`, `raw_agreement.tsv` — the README's tool-vs-tool method in memory, every ordered pair). `--thresholds DeepBGC=0.5,0.8` makes one *series* per cutoff; an unscored tool is one series. **`--placeholder` (default `SHARP`) writes all-zero `status=placeholder` rows** so the figures already have its slot; fill it by passing `SHARP=<parquet>` or by hand-editing the TSVs. Classes from antiSMASH products (antiSMASH 8's own rule `CATEGORY`s), DeepBGC `product_class` and MiBIG classes map onto one vocabulary (`CLASS_LOOKUP`): PKS, NRPS, RiPP, Terpene, Saccharide, Other, Hybrid, Unclassified; unknown names are logged and filed under Other. Runs in the light `report` env (`pixi run -e report`) | `test_build_report_tables.py` |
 
 ---
 
@@ -587,7 +588,7 @@ These were scoped out of the MVP intentionally. Add only when the feature is exp
 | Ensemble of modality-specific models | `train.py` | After multi-class |
 | Asymmetric overlap thresholds | `metrics.py` | If team decides one threshold is insufficient |
 | AUROC in benchmark | `metrics.py` | Once `predict.py` scores ALL candidates (not just positives) |
-| Per-class benchmark breakdown | `evaluate.py` | When team asks "why is NRPS recall low?" |
+| Per-class benchmark breakdown | `evaluate.py` | When team asks "why is NRPS recall low?" — a report-side per-class *recovery* table already exists (`build_report_tables.py mibig` → `mibig_by_class.tsv`); the JSON schema is unchanged |
 | DeepBGC / antiSMASH per-class breakdown | `evaluate.py` extension | When team asks "which BGC class is each tool best at?" |
 | Resumable embedding extraction | `extract_embeddings.py` | When datasets exceed ~100k proteins |
 | fp16/bf16 inference | `model_management.py` | When running on GPU cluster |
@@ -640,4 +641,20 @@ pixi run python scripts/prepare_bgcatlas_ground_truth.py \
 
 # Full competitor comparison (once baseline scripts are written)
 # See "Benchmark comparison" section above for full command sequence
+
+# Report figures, step 1: tidy tables (light env; mirrors the script docstring)
+pixi run -e report python scripts/build_report_tables.py mibig \
+    --ground-truth data/interim/benchmark_set/benchmark_ground_truth.tsv \
+    --contigs data/interim/benchmark_set/analyzed_contigs.txt \
+    --predictions antiSMASH=data/interim/antismash_predictions_benchmark_set.parquet \
+                  DeepBGC=data/interim/deepbgc_predictions_benchmark_set.parquet \
+    --output-dir data/processed/report/tables
+pixi run -e report python scripts/build_report_tables.py raw \
+    --manifest data/interim/actino_db/genomes.tsv \
+    --assemblies data/interim/actino_db/assemblies.tsv \
+    --predictions antiSMASH=data/interim/antismash_predictions_actino.parquet \
+                  DeepBGC=data/interim/deepbgc_predictions_actino.parquet \
+    --thresholds DeepBGC=0.5,0.8 \
+    --output-dir data/processed/report/tables
+#   SHARP is an all-zero placeholder until passed as SHARP=<parquet>
 ```
