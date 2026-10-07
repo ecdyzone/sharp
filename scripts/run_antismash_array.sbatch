@@ -95,7 +95,7 @@
 # idle.
 
 #SBATCH --job-name=antismash-bench
-#SBATCH --partition=basic
+#SBATCH --partition=max50
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10

@@ -46,7 +46,7 @@
 # affects queue position. Re-measure with `seff <jobid>` if the input changes.
 
 #SBATCH --job-name=deepbgc-scoe
-#SBATCH --partition=basic
+#SBATCH --partition=max50
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10

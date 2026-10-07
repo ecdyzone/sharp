@@ -45,7 +45,7 @@
 # which the 1.62 GB measurement confirms.
 
 #SBATCH --job-name=antismash-scoe
-#SBATCH --partition=basic
+#SBATCH --partition=max50
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10

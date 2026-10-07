@@ -87,7 +87,7 @@
 # Re-measure with `seff <jobid>_<index>` -- note the array index suffix.
 
 #SBATCH --job-name=deepbgc-bench
-#SBATCH --partition=basic
+#SBATCH --partition=max50
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
