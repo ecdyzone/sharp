@@ -121,6 +121,10 @@ def row_to_region(row: dict[str, str]) -> PredictedRegion | None:
 
 
 def load_rows(path: Path) -> list[dict[str, str]]:
+    # `bgc.tsv` carries list-valued columns (protein ids, domains, per-activity
+    # scores) that grow with the candidate, so a long one overflows csv's 128 KiB
+    # default field cap. We read none of them; lift the cap rather than drop them.
+    csv.field_size_limit(2**31 - 1)
     with path.open(newline="") as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
 

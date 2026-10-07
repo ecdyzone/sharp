@@ -195,6 +195,18 @@ class TestConvertEndToEnd:
         assert r2.predicted_class is None
         assert (r2.start, r2.end) == (60518, 60743)
 
+    def test_field_larger_than_csv_default_limit(self, tmp_path: Path) -> None:
+        # A long candidate's list column exceeds csv's 131072-byte field cap.
+        header, first = FIXTURE.read_text().splitlines()[:2]
+        cols = header.split("\t")
+        fields = first.split("\t")
+        fields[cols.index("protein_ids")] = "x" * 200_000
+        tsv = tmp_path / "out.bgc.tsv"
+        tsv.write_text("\n".join([header, "\t".join(fields)]) + "\n")
+
+        n = convert(tsv, tmp_path / "predictions.parquet")
+        assert n == 1
+
     def test_convert_accepts_directory(self, tmp_path: Path) -> None:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
