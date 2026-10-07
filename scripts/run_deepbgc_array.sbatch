@@ -90,8 +90,8 @@
 #SBATCH --partition=basic
 #SBATCH --nodelist=n01
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=64G
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
