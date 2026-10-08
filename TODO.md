@@ -99,8 +99,11 @@ after `--min-length` drops BGC-only deposits; `--min-length 0` keeps them.
       `docs/BENCHMARK_SCOPES.md` strip it with `{sub(/\r$/, "")}` and the doc
       explains why; anyone hand-building a scope should `wc -l` it before scoring.
 
-- [ ] **The pool list carries unversioned accessions, so 51 genomes' contigs
-      will not match the ground truth.** `select_benchmark_genomes.py` normally
+- [x] **The pool list carries unversioned accessions, so 51 genomes' contigs
+      will not match the ground truth.** *Fixed 2026-10-08 in
+      `merge_predictions.py` (`align_versions`), as proposed below; on `pool_bact`
+      it recovered 49 antiSMASH / 48 DeepBGC contigs. Root cause in
+      `select_benchmark_genomes.py` still stands.* `select_benchmark_genomes.py` normally
       takes the accession from NCBI esummary's `accessionversion` field, which is
       versioned. But some WGS contigs are absent from that index (rejected as
       "Invalid uid"), and those fall through to `infer_lower_bounds`, which builds

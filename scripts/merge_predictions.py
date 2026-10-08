@@ -16,6 +16,13 @@ missing genome shrinks the predictions but *not* the recall denominator (that
 comes from `--contigs`), so it would otherwise look like the tool simply found
 nothing there.
 
+With `--contigs`, a prediction whose contig is not in the scope but whose
+unversioned accession is (`X.1` vs `X`) is renamed onto the scope's spelling.
+Pool lists can carry unversioned accessions while NCBI returns a versioned
+FASTA header, which every tool copies into its output; without this the
+predictions are filtered out at evaluation while their clusters stay in the
+recall denominator — a silent zero for that genome.
+
 Usage:
     # Inspect what would be merged, without writing
     python scripts/merge_predictions.py --tool antismash \\
@@ -46,6 +53,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import sys
 from pathlib import Path
@@ -162,6 +170,33 @@ def report_missing(
     return [c for c in contigs if c not in counts]
 
 
+def unversioned(accession: str) -> str:
+    """`JADBID010000001.1` -> `JADBID010000001`; unchanged if no version."""
+    return accession.split(".", 1)[0]
+
+
+def align_versions(
+    regions: list[PredictedRegion], contigs: list[str]
+) -> tuple[list[PredictedRegion], dict[str, str]]:
+    """Rename prediction contigs onto the scope file's spelling.
+
+    A contig already in the scope is left alone. One that is not, but whose
+    unversioned accession is listed (unversioned) in the scope, is renamed to
+    that entry. Fixing it here, not in the FASTA headers, keeps every tool's
+    pool as the tool wrote it and absorbs a future NCBI version bump the same
+    way. Returns (regions, renames) with renames as {old: new}.
+    """
+    scope = set(contigs)
+    renames: dict[str, str] = {}
+    out: list[PredictedRegion] = []
+    for r in regions:
+        if r.contig not in scope and unversioned(r.contig) in scope:
+            renames[r.contig] = unversioned(r.contig)
+            r = dataclasses.replace(r, contig=renames[r.contig])
+        out.append(r)
+    return out, renames
+
+
 # ══════════════════════════════ orchestration ══════════════════════════════
 
 def run(
@@ -180,6 +215,11 @@ def run(
     contigs = load_contigs(contigs_path) if contigs_path else []
     manifest = load_genomes_tsv(manifest_path) if manifest_path else None
     missing = report_missing(counts, contigs, manifest) if contigs else []
+    regions, renames = align_versions(regions, contigs)
+    if renames:
+        LOG.info("%d contig(s) renamed onto the scope's unversioned accession "
+                 "(e.g. %s)", len(renames),
+                 ", ".join(f"{a} -> {b}" for a, b in list(renames.items())[:3]))
 
     LOG.info("%s: %d genome dir(s), %d region(s) total",
              tool, len(counts), len(regions))

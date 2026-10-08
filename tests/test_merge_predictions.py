@@ -19,13 +19,14 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from merge_predictions import (  # noqa: E402
     TOOLS,
+    align_versions,
     genome_dirs,
     load_contigs,
     merge,
     report_missing,
     run,
 )
-from sharp.io import load_predictions_parquet  # noqa: E402
+from sharp.io import PredictedRegion, load_predictions_parquet  # noqa: E402
 
 
 def make_tree(root: Path, fixture: str, filename: str, genomes: list[str]) -> Path:
@@ -134,6 +135,38 @@ class TestReportMissing:
         assert report_missing({"A": 1}, []) == []
 
 
+def region(contig: str) -> PredictedRegion:
+    return PredictedRegion(f"{contig}_r1", contig, 0, 100, 1.0)
+
+
+class TestAlignVersions:
+    def test_versioned_prediction_mapped_onto_unversioned_scope(self) -> None:
+        out, renames = align_versions([region("JADBID010000001.1")],
+                                      ["JADBID010000001"])
+        assert out[0].contig == "JADBID010000001"
+        assert renames == {"JADBID010000001.1": "JADBID010000001"}
+
+    def test_exact_match_untouched(self) -> None:
+        out, renames = align_versions([region("AL645882.2")], ["AL645882.2"])
+        assert out[0].contig == "AL645882.2"
+        assert renames == {}
+
+    def test_different_version_in_scope_not_rewritten(self) -> None:
+        # Only an *unversioned* scope entry absorbs a version; X.1 vs X.2 are
+        # distinct records and must not be silently merged.
+        out, renames = align_versions([region("KJ396772.1")], ["KJ396772.2"])
+        assert out[0].contig == "KJ396772.1"
+        assert renames == {}
+
+    def test_out_of_scope_contig_untouched(self) -> None:
+        out, _ = align_versions([region("OTHER.1")], ["AL645882.2"])
+        assert out[0].contig == "OTHER.1"
+
+    def test_empty_scope_is_a_no_op(self) -> None:
+        out, renames = align_versions([region("X.1")], [])
+        assert out[0].contig == "X.1" and renames == {}
+
+
 class TestLoadContigs:
     def test_strips_and_skips_blanks(self, tmp_path: Path) -> None:
         p = tmp_path / "contigs.txt"
@@ -176,3 +209,14 @@ class TestRun:
         with caplog.at_level("WARNING"):
             run(deepbgc_tree, "deepbgc", out, scope, do_inspect=False)
         assert "GEN_MISSING" in caplog.text
+
+    def test_versioned_predictions_land_on_unversioned_scope(
+        self, deepbgc_tree: Path, tmp_path: Path
+    ) -> None:
+        # The fixture's contig is AL589148.1; a scope listing it unversioned
+        # must still claim its predictions.
+        scope = tmp_path / "contigs.txt"
+        scope.write_text("AL589148\n")
+        out = tmp_path / "merged.parquet"
+        run(deepbgc_tree, "deepbgc", out, scope, do_inspect=False)
+        assert {r.contig for r in load_predictions_parquet(out)} == {"AL589148"}
