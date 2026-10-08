@@ -158,6 +158,7 @@ Paths are resolved once at import, so tests that need different values reload th
 | `scripts/convert_antismash_to_parquet.py` | antiSMASH `sequence.json` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_antismash.py` |
 | `scripts/convert_deepbgc_to_parquet.py` | DeepBGC `.bgc.tsv` → `predictions.parquet`; no coord conversion; `--inspect` mode | `test_convert_deepbgc.py` |
 | `scripts/convert_gecco_to_parquet.py` | GECCO `.clusters.tsv` → `predictions.parquet`; `start-1` coord conversion; `--inspect` mode | `test_convert_gecco.py` |
+| `scripts/convert_sharptool_to_parquet.py` | sharptool (the team's SHARP BGC finder, renamed here to keep it apart from this repo) `neighborhoods.tsv` → `predictions.parquet`. One row per protein; **a block is one region**. Extent defaults to the block's **gene span** (first gene start → last gene end; `--extent block` = the padded `block_id` window, ~6 kb gene-less flank per side). Gene and block coords are **1-based inclusive** → `start-1` (verified 2026-10-08 on full runs: CDS `end-start == 3(plen+1)-1` on 302,580/302,586 loci-run rows; no block starts at 0, ends reach `nlen` but never pass it). Per-locus MiBIG runs are Bakta-annotated, so `nucleotide` is `contig_1` → **mapped back to `sample`** (refused if a sample has two Bakta contigs). Origin-wrapping blocks (`block_id` end < start) **split into `.pre_origin`/`.post_origin`**. `p_bgc = 1.0`, `predicted_class` empty (`query_source` is the anchor set, not a class). Overlapping blocks stay separate unless `--merge-overlapping`. Output is already one file: skips `merge_predictions.py`/`run_benchmark.sh`, evaluate directly with `--contigs` (a locus that found nothing has no rows). `--inspect` mode | `test_convert_sharptool.py` |
 | `scripts/run_antismash.sbatch` | Slurm job: antiSMASH on the benchmark genome. CPU-only like DeepBGC. It takes `--cpus` and hands it to its own module scheduler, but that scheduler parallelises very little, so a wide allocation is wasted. **Sizing measured** (`seff` on array job 45315 index 1, which ran this script's own default genome `AL645882.2`: 5.40% CPU efficiency of 16 cores, 1.62 GB peak) → 4 cores / 4G, matching `run_antismash_array.sbatch`; walltime stays 12h since `$1` may be an arbitrary genome. Paths are explicit at the top of the file | shell, no test |
 | `scripts/run_deepbgc.sbatch` | Slurm job: DeepBGC on the benchmark genome. CPU-only on a GPU-free node (the `python=3.7` env predates CUDA-capable TF). Sized from `seff` on job 42995: 0.86 cores, 1.71 GB, 32 min → 2 cores / 8G / 2h. hmmscan dominates the runtime but DeepBGC does not thread it, so the pipeline is serial. **Inputs under 20 kb run with `--prodigal-meta-mode`** (Prodigal's default mode refuses them; see `run_deepbgc_array.sbatch`). Paths are explicit at the top of the file | shell, no test |
 | `scripts/run_antismash_array.sbatch` | Slurm **job array**: antiSMASH over the whole benchmark set, one task per genome (index → line of `analyzed_contigs.txt`). Resumable (skips genomes with existing output), per-genome output dir. Sizing **measured** (`seff` on job 45315, indices 1–2, 2026-08-19): ~3 min wall, 5.4%/7.8% CPU efficiency of 16 cores (~1.3 cores of real parallelism), 1.6 GB peak → 4 cores / 4G (walltime 4h, deliberate slack over the measured ~3 min). antiSMASH ignores most of `--cpus`, the same way DeepBGC did (sized 8, measured 0.86). Takes the genome list as `$1`, an **index offset as `$2`** (line = `SLURM_ARRAY_TASK_ID + OFFSET`, offset defaults to 0) the **genome directory as `$3`** (default `data/raw/genomes`, so a genome database staged by `build_genome_manifest.py --link-dir` reuses the same script with an assembly-keyed pool) and the **output pool root as `$4`** (default `<tool>/out_benchmark`; a separate campaign needs its own pool because `merge_predictions.py` converts every directory under `--input-dir`): Slurm's `MaxArraySize` caps the highest legal array *index* at 1000, so a pool over that is submitted as successive windows reusing indices `1..1000` over the one list, rather than slicing it into per-chunk files. The list is read per task **at task start**, so editing it mid-flight renumbers lines under pending tasks. Logs go to `logs/` (Slurm will not create it). | shell, no test |
@@ -359,6 +360,7 @@ run (`antismash 8.0.4`, `deepbgc`, `gecco 0.10.3` on the same input FASTA,
 | antiSMASH | none → set `1.0` | 0-based half-open (verified) | none |
 | DeepBGC | `deepbgc_score` | 0-based half-open (verified) | none — refutes old hypothesis |
 | GECCO | `average_p` | 1-based inclusive (verified) | `start - 1`, `end` unchanged — confirms old hypothesis |
+| sharptool | none → set `1.0` | 1-based inclusive (verified 2026-10-08, full runs) | `start - 1`, `end` unchanged; one region per block |
 
 Evidence (span = `end - start` from the TSV/JSON row, cross-checked against the
 matching region/cluster `.gbk` LOCUS bp length, across every row in each output —
@@ -642,6 +644,23 @@ pixi run python scripts/prepare_bgcatlas_ground_truth.py \
 
 # Full competitor comparison (once baseline scripts are written)
 # See "Benchmark comparison" section above for full command sequence
+
+# sharptool (the team's SHARP): verify the schema, then convert each run.
+# MiBIG loci run → scored on the whole bacterial pool, like the baselines' JSONs
+pixi run python scripts/convert_sharptool_to_parquet.py --inspect <neighborhoods.tsv>
+pixi run python scripts/convert_sharptool_to_parquet.py \
+    --input <sharp_loci_fasta_run/all_neighborhood.tsv> \
+    --output data/interim/sharptool_predictions_pool_bact_plus130.parquet
+pixi run python -m sharp.evaluate \
+    --predictions data/interim/sharptool_predictions_pool_bact_plus130.parquet \
+    --ground-truth data/interim/pool_bact_plus130/benchmark_ground_truth.tsv \
+    --contigs data/interim/pool_bact_plus130/analyzed_contigs.txt \
+    --output data/processed/benchmark_pool_bact_plus130_sharptool.json
+# Genome-database run → raw tables (pass as SHARP=<parquet> to build_report_tables.py raw)
+pixi run python scripts/convert_sharptool_to_parquet.py \
+    --input <sharp_batch/neighborhoods.tsv> \
+    --output data/interim/sharptool_predictions_actino.parquet
+#   --extent block uses the padded block_id window; --merge-overlapping merges blocks
 
 # Report figures, step 1: tidy tables (light env; mirrors the script docstring)
 pixi run -e report python scripts/build_report_tables.py mibig \

@@ -377,6 +377,42 @@ pixi run python scripts/convert_gecco_to_parquet.py \
 Both then evaluate exactly like step 5 above, with the same `--ground-truth` and
 the same `--contigs` file, writing `benchmark_deepbgc.json` / `benchmark_gecco.json`.
 
+**sharptool** (the team's SHARP BGC finder, named so to keep it apart from this
+repo) — it runs outside this env like the others, and leaves one
+`neighborhoods.tsv` per run: one row per protein, grouped into **blocks**, each
+block being one predicted region. The converter collapses each block to its gene
+span (first gene start to last gene end; `--extent block` uses the padded
+`block_id` window instead), converts its 1-based inclusive coordinates
+(`start - 1`), maps Bakta's `contig_1` back to the locus accession in per-locus
+runs, and splits a block that wraps the origin into two regions. SHARP has no
+score (`p_bgc = 1.0`) and no BGC class. Overlapping blocks stay separate unless
+`--merge-overlapping` is given.
+
+```bash
+pixi run python scripts/convert_sharptool_to_parquet.py --inspect <neighborhoods.tsv>
+
+# MiBIG loci run → the whole bacterial pool, same scope as the baselines' JSONs
+pixi run python scripts/convert_sharptool_to_parquet.py \
+    --input <sharp_loci_fasta_run/all_neighborhood.tsv> \
+    --output data/interim/sharptool_predictions_pool_bact_plus130.parquet
+pixi run python -m sharp.evaluate \
+    --predictions data/interim/sharptool_predictions_pool_bact_plus130.parquet \
+    --ground-truth data/interim/pool_bact_plus130/benchmark_ground_truth.tsv \
+    --contigs data/interim/pool_bact_plus130/analyzed_contigs.txt \
+    --output data/processed/benchmark_pool_bact_plus130_sharptool.json
+
+# Genome-database run → the raw comparison (pass it as SHARP=<parquet>, below)
+pixi run python scripts/convert_sharptool_to_parquet.py \
+    --input <sharp_batch/neighborhoods.tsv> \
+    --output data/interim/sharptool_predictions_actino.parquet
+```
+
+sharptool's output is already one file, so it skips `merge_predictions.py` and
+`run_benchmark.sh` (both work on a per-genome output pool); evaluate it
+directly. A locus the run was given but found nothing on has no rows, so always
+pass `--contigs`: inferring the scope from the predictions would drop those
+loci from the denominator.
+
 #### Running on Slurm
 
 `scripts/run_antismash.sbatch` and `scripts/run_deepbgc.sbatch` wrap the tool
@@ -987,7 +1023,8 @@ under Other.
 
 **The S(H)ARP slot.** `--placeholder` (default `SHARP`) writes all-zero rows
 with `status=placeholder`. To fill it, either pass its predictions like any
-other tool (`SHARP=data/interim/sharp_predictions.parquet`, which drops the
+other tool (`SHARP=data/interim/sharptool_predictions_actino.parquet`, from
+`convert_sharptool_to_parquet.py`, which drops the
 placeholder), or type its numbers into the TSVs by hand and re-run only the
 plotting step. A series is drawn as "pending" only while its rows are flagged
 `placeholder` *and* all zero, so typed-in numbers show up without editing the
@@ -1083,6 +1120,7 @@ pixi run pytest
 │   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
 │   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
 │   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
+│   ├── convert_sharptool_to_parquet.py   # sharptool neighborhoods.tsv -> predictions.parquet (one region per block, start-1)
 │   ├── download_bgc-atlas.sh
 │   ├── download_benchmark_genomes.sh     # benchmark set TSV -> data/raw/genomes/<ACC>.fasta (resumable)
 │   ├── download_genome.sh                # NCBI accession -> data/raw/<ACC>.fasta + --contigs scope file
@@ -1125,13 +1163,16 @@ pixi run pytest
     │   ├── deepbgc_out.bgc.tsv              # real (unmodified) DeepBGC 0.1.0 output
     │   ├── deepbgc_predictions.parquet      # converted real output, benchmark regression
     │   ├── gecco_predictions.parquet        # converted real output, benchmark regression
-    │   └── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
+    │   ├── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
+    │   ├── sharptool_batch_neighborhoods.tsv  # real sharptool rows, genome-database run (3 blocks)
+    │   └── sharptool_loci_neighborhoods.tsv   # real sharptool rows, MiBIG loci run (3 blocks, Bakta contig_1)
     ├── test_build_genome_manifest.py
     ├── test_build_report_tables.py
     ├── test_config.py
     ├── test_convert_antismash.py
     ├── test_convert_deepbgc.py
     ├── test_convert_gecco.py
+    ├── test_convert_sharptool.py
     ├── test_evaluate.py
     ├── test_extract_embeddings.py
     ├── test_generate_mock_data.py
