@@ -67,7 +67,7 @@ Usage:
 
     # Once S(H)ARP has predictions, add it like any other tool — the default
     # SHARP placeholder is then dropped:
-    #     --predictions ... SHARP=data/interim/sharp_predictions.parquet
+    #     --predictions ... SHARP=data/interim/sharptool_predictions_actino.parquet
 """
 from __future__ import annotations
 
