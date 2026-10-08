@@ -401,6 +401,93 @@ See [README → Benchmarking in a shared clone](../README.md#benchmarking-in-a-s
 
 ---
 
+## `pool_bact_plus130` — the scope of the published three-tool report
+
+The antiSMASH / DeepBGC / sharptool comparison in the report is scored on
+`data/interim/pool_bact_plus130/`: the whole pool plus **130 accessions** that the
+sharptool author's actinobacterial MiBiG list (`mibig_data_actino_filtered.tsv`,
+226 loci) has and `pool_bact` lacks. sharptool was run on that list, so the
+baselines were run on the missing 130 too and all three tools share one scope.
+**1,217 contigs, 1,289 ground-truth rows.**
+
+It was assembled by hand rather than by `select_benchmark_genomes.py`, which is
+why it behaves differently from every other scope here. Audited 2026-10-08:
+
+- **The 130 add no new clusters.**
+  - **9 are second copies of genomes already in the pool**, under another
+    accession for the same sequence: a version bump (`KJ396772.1` / `.2`), an
+    unversioned pool entry (`JAKQYH010000014` / `.1`), RefSeq vs GenBank
+    (`NZ_CM001889.1` / `CM001889.1`) or the *S. coelicolor* pair
+    (`NC_003888.3` / `AL645882.2`). `select_benchmark_genomes.py` would have
+    merged them; appending by hand does not. Their 9 clusters are therefore in
+    the ground truth **twice**, once under each name: 1,289 rows, 1,280 unique
+    `cluster_id`s.
+  - **The other 121 carry no ground truth at all.** They are MiBiG entries
+    without coordinates (`from: 0, to: 0`). Every prediction on them is
+    unmatched, which lowers `matched_prediction_frac` and nucleotide precision
+    for every tool.
+- **Like the pool, it includes BGC-only deposits**, so detection recall is
+  inflated for every tool alike (see "BGC-only deposits are in the pool" above).
+  The comparison stays fair, but the absolute numbers are not headline numbers.
+
+The effect is small and identical in direction for all three tools; the ranking
+does not move:
+
+| tool | `pool_bact_plus130` (1,289 rows) | `pool_bact` (1,280 unique clusters) |
+|---|---|---|
+| antiSMASH | recall 0.843, matched 0.123 | recall 0.844, matched 0.127 |
+| DeepBGC | recall 0.746, matched 0.031 | recall 0.746, matched 0.032 |
+| sharptool | recall 0.617, matched 0.034 | recall 0.620, matched 0.035 |
+
+**Building it.** These commands reproduce the three files byte for byte
+(verified against the copies the report was scored with). They need the
+sharptool author's list; on the server it sits in their benchmarks directory.
+
+```bash
+LIST=<path to mibig_data_actino_filtered.tsv>     # its `loci` column is column 9
+NEW=data/interim/extra_130
+DST=data/interim/pool_bact_plus130
+mkdir -p "$NEW" "$DST"
+
+# 1. The 130: list loci the pool does not have
+tail -n +2 "$LIST" | cut -f9 | sort -u \
+    | comm -23 - <(sort -u data/interim/pool_bact/analyzed_contigs.txt) \
+    > "$NEW/genomes.txt"
+
+# 2. Scope file: pool + the 130, sorted
+sort data/interim/pool_bact/analyzed_contigs.txt "$NEW/genomes.txt" > "$DST/analyzed_contigs.txt"
+
+# 3. Ground truth: the pool's, plus the bacterial ground-truth rows on the 130
+#    (exactly the 9 duplicated clusters above)
+cp data/interim/pool_bact/benchmark_ground_truth.tsv "$DST/benchmark_ground_truth.tsv"
+awk -F'\t' '{sub(/\r$/, "")} NR==FNR {c[$1]; next} FNR>1 && ($2 in c)' \
+    "$NEW/genomes.txt" data/raw/bacterial_ground_truth.tsv \
+    >> "$DST/benchmark_ground_truth.tsv"
+```
+
+**Running the baselines on the 130 and scoring.** The download step is
+reconstructed — how the 130 were originally fetched is not recorded —
+`download_benchmark_genomes.sh` reads accessions from column 2 of a TSV with a
+header, so the plain list gets a rank column first:
+
+```bash
+{ printf 'rank\taccession\n'; awk '{print NR "\t" $0}' "$NEW/genomes.txt"; } > "$NEW/genomes.tsv"
+scripts/download_benchmark_genomes.sh "$NEW/genomes.tsv"
+
+N=$(wc -l < "$NEW/genomes.txt")
+sbatch --array=1-${N}%8 scripts/run_deepbgc_array.sbatch   "$NEW/genomes.txt" 0
+sbatch --array=1-${N}%8 scripts/run_antismash_array.sbatch "$NEW/genomes.txt" 0
+
+scripts/run_benchmark.sh pool_bact_plus130 --label "$USER"
+```
+
+Both arrays write into the same accession-keyed pool as everything else, so the
+130 are simply 130 more pool directories. sharptool is scored on the same two
+files with `sharp.evaluate` directly — see README → "Reproducing the published
+report".
+
+---
+
 ## Caveats that belong in any write-up
 
 - **Recall is over coordinate-resolved MiBiG, not all known BGCs.** The

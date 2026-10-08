@@ -481,11 +481,23 @@ coordinate-resolved bacterial clusters / 1,112 accessions, BGC-only deposits
 included so they can be sliced out at scope time), every scope carved from it
 (`_strep` 156, `_actino` 575, `_bact`, per-genus negative controls, per-class
 slices, a 3-genome smoke scope), the rationale for each, and the exact commands
-that build the ground truths, the pool list, the download and the scopes.
+that build the ground truths, the pool list, the download and the scopes. It
+also records **`pool_bact_plus130`**, the hand-assembled scope of the published
+three-tool report: `pool_bact` + 130 accessions from the sharptool author's
+actino MiBIG list (1,217 contigs). The 130 add **no new clusters** (audited
+2026-10-08): 9 are second accessions of pool genomes whose clusters were
+appended again, so its 1,289 GT rows are **1,280 unique clusters with 9 counted
+twice**; the other 121 have no GT (MiBIG entries without coordinates). Effect
+≤0.003 recall, same direction for every tool. Its build commands reproduce the
+files byte for byte.
 
-**The scaled run (50 genomes, 113 clusters) is the current published set** — a
-single-genome run caps the recall denominator at 16 clusters. The
-single-genome flow below still works for a smoke test.
+**The published three-tool report (antiSMASH, DeepBGC, sharptool) is scored on
+`pool_bact_plus130`** for MiBIG and `actino_db` for the raw comparison — see
+README → "Reproducing the published report" for the commands, the check
+(`mibig_metrics.tsv` must match the JSONs: 0.843 / 0.746 / 0.617) and the
+caveats it must carry. The earlier scaled run (50 genomes, 113 clusters) is
+superseded; a single-genome run caps the recall denominator at 16 clusters and
+the single-genome flow below still works for a smoke test.
 
 **Scoreable MiBIG is much smaller than its entry count** (measured 2026-08-21):
 3,013 entries → 1,634 coordinate-resolved (1,420 accessions) → 1,280 bacterial
@@ -655,7 +667,7 @@ pixi run python -m sharp.evaluate \
     --predictions data/interim/sharptool_predictions_pool_bact_plus130.parquet \
     --ground-truth data/interim/pool_bact_plus130/benchmark_ground_truth.tsv \
     --contigs data/interim/pool_bact_plus130/analyzed_contigs.txt \
-    --output data/processed/benchmark_pool_bact_plus130_sharptool.json
+    --output data/processed/benchmark_pool_bact_plus130_sharptool.${USER}.json
 # Genome-database run → raw tables (pass as SHARP=<parquet> to build_report_tables.py raw)
 pixi run python scripts/convert_sharptool_to_parquet.py \
     --input <sharp_batch/neighborhoods.tsv> \
@@ -682,4 +694,26 @@ pixi run -e report python scripts/build_report_tables.py raw \
 pixi run -e report python scripts/plot_report_figures.py \
     --tables-dir data/processed/report/tables \
     --output-dir data/processed/report/figures
+
+# The published three-tool report (mirrors README → "Reproducing the published
+# report"). In the shared server clone: `pixi install -e report` once on the
+# login node, and write under report/$USER so nobody overwrites anybody.
+I=data/interim; OUT=data/processed/report/$USER
+pixi run -e report python scripts/build_report_tables.py mibig \
+    --ground-truth $I/pool_bact_plus130/benchmark_ground_truth.tsv \
+    --contigs $I/pool_bact_plus130/analyzed_contigs.txt \
+    --predictions antiSMASH=$I/antismash_predictions_pool_bact_plus130.parquet \
+                  DeepBGC=$I/deepbgc_predictions_pool_bact_plus130.parquet \
+                  SHARP=$I/sharptool_predictions_pool_bact_plus130.parquet \
+    --output-dir $OUT/tables
+pixi run -e report python scripts/build_report_tables.py raw \
+    --manifest $I/actino_db/genomes.tsv \
+    --assemblies $I/actino_db/assemblies.tsv \
+    --predictions antiSMASH=$I/antismash_predictions_actino.parquet \
+                  DeepBGC=$I/deepbgc_predictions_actino.parquet \
+                  SHARP=$I/sharptool_predictions_actino.parquet \
+    --thresholds DeepBGC=0.5,0.8 \
+    --output-dir $OUT/tables
+pixi run -e report python scripts/plot_report_figures.py \
+    --tables-dir $OUT/tables --output-dir $OUT/figures
 ```

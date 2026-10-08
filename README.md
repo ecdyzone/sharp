@@ -26,6 +26,7 @@ Click the links below for the interactive HTML pages:
   - [Which genomes, and which slices](#which-genomes-and-which-slices)
   - [Comparing tools without a ground truth](#comparing-tools-without-a-ground-truth)
   - [Report tables and figures](#report-tables-and-figures)
+  - [Reproducing the published report](#reproducing-the-published-report)
 - [Utilities](#utilities)
 - [Tests](#tests)
 - [Directory Structure](#directory-structure)
@@ -400,7 +401,7 @@ pixi run python -m sharp.evaluate \
     --predictions data/interim/sharptool_predictions_pool_bact_plus130.parquet \
     --ground-truth data/interim/pool_bact_plus130/benchmark_ground_truth.tsv \
     --contigs data/interim/pool_bact_plus130/analyzed_contigs.txt \
-    --output data/processed/benchmark_pool_bact_plus130_sharptool.json
+    --output data/processed/benchmark_pool_bact_plus130_sharptool.${USER}.json
 
 # Genome-database run → the raw comparison (pass it as SHARP=<parquet>, below)
 pixi run python scripts/convert_sharptool_to_parquet.py \
@@ -412,7 +413,14 @@ sharptool's output is already one file, so it skips `merge_predictions.py` and
 `run_benchmark.sh` (both work on a per-genome output pool); evaluate it
 directly. A locus the run was given but found nothing on has no rows, so always
 pass `--contigs`: inferring the scope from the predictions would drop those
-loci from the denominator.
+loci from the denominator. Going around the wrapper also means no `provenance`
+block in the JSON and no overwrite protection, so name the file with your own
+label (`.${USER}.json`) as the wrapper would.
+
+The two inputs come from the sharptool author's run directory: the per-locus
+MiBIG run (one `neighborhoods.tsv` per locus, concatenated into
+`all_neighborhood.tsv`) and the genome-database run (`sharp_batch/neighborhoods.tsv`,
+~1.6 GB). Rows are streamed, so the large one needs no special memory.
 
 #### Running on Slurm
 
@@ -603,7 +611,9 @@ by the rest of the group. `run_benchmark.sh` checks this before doing any work
 and prints these two commands if it is missing.
 
 Everything else — selecting a scope, downloading genomes, submitting the arrays
-— is the pool owner's job, and is described in the worked example below.
+— is the pool owner's job, and is described in the worked example below. Report
+tables and figures follow the same rule of one output directory per person; see
+[Reproducing the published report](#reproducing-the-published-report).
 
 ### Worked example: the 50-genome benchmark
 
@@ -1036,6 +1046,91 @@ a matter of pointing `--ground-truth`, `--contigs` and `--predictions` at the
 other scope's files. Score the pool through a scope with BGC-only deposits
 removed (`benchmark_set_bact`, see [BENCHMARK_SCOPES.md](docs/BENCHMARK_SCOPES.md)),
 not `pool_bact` itself, or every tool's detection recall drifts toward 1.0.
+The published three-tool report is the exception: it is scored on
+`pool_bact_plus130`, deposits included, so its recall is inflated for all three
+tools alike — see the next section for the caveats it carries.
+
+### Reproducing the published report
+
+The three-tool report (antiSMASH, DeepBGC, sharptool) has two halves, each with
+its own inputs:
+
+| half | scope | predictions |
+|---|---|---|
+| MiBIG benchmark | `data/interim/pool_bact_plus130/` (1,217 contigs) | `<tool>_predictions_pool_bact_plus130.parquet` |
+| raw comparison | `data/interim/actino_db/` (2,563 assemblies) | `<tool>_predictions_actino.parquet` |
+
+The antiSMASH and DeepBGC parquets come from `run_benchmark.sh` (MiBIG) and
+`merge_predictions.py` (raw); the sharptool ones from
+`convert_sharptool_to_parquet.py`, as in the sharptool section above. How
+`pool_bact_plus130` was built, and why it holds 1,289 rows for 1,280 unique
+clusters, is in [BENCHMARK_SCOPES.md](docs/BENCHMARK_SCOPES.md#pool_bact_plus130--the-scope-of-the-published-three-tool-report).
+
+**On the server**, in the shared clone. `-e report` is its own small
+environment; pixi installs it on first use, which needs the network, so do that
+once on the login node (`pixi install -e report`). The default environment
+carries the same packages, so plain `pixi run` works there too. Write to a
+directory of your own so two people never overwrite each other's figures:
+
+```bash
+cd <the shared clone>
+pixi install -e report                    # once, on the login node
+
+I=data/interim
+OUT=data/processed/report/$USER
+
+pixi run -e report python scripts/build_report_tables.py mibig \
+    --ground-truth $I/pool_bact_plus130/benchmark_ground_truth.tsv \
+    --contigs $I/pool_bact_plus130/analyzed_contigs.txt \
+    --predictions antiSMASH=$I/antismash_predictions_pool_bact_plus130.parquet \
+                  DeepBGC=$I/deepbgc_predictions_pool_bact_plus130.parquet \
+                  SHARP=$I/sharptool_predictions_pool_bact_plus130.parquet \
+    --output-dir $OUT/tables
+
+pixi run -e report python scripts/build_report_tables.py raw \
+    --manifest $I/actino_db/genomes.tsv \
+    --assemblies $I/actino_db/assemblies.tsv \
+    --predictions antiSMASH=$I/antismash_predictions_actino.parquet \
+                  DeepBGC=$I/deepbgc_predictions_actino.parquet \
+                  SHARP=$I/sharptool_predictions_actino.parquet \
+    --thresholds DeepBGC=0.5,0.8 \
+    --output-dir $OUT/tables
+
+pixi run -e report python scripts/plot_report_figures.py \
+    --tables-dir $OUT/tables --output-dir $OUT/figures
+```
+
+**On a laptop**, the same three commands work against a copy of those files:
+point `I` at the copied `data/interim` and `OUT` anywhere. Only the parquets,
+the two scope directories and `actino_db/{genomes,assemblies}.tsv` are needed.
+
+**Check before reading a figure.** `mibig_metrics.tsv` recomputes every number
+with the same functions as `sharp.evaluate`, so its detection recall must match
+the JSONs: antiSMASH 0.843, DeepBGC 0.746, SHARP 0.617 on `pool_bact_plus130`.
+If it does not, the tables were built from different files than the JSONs, and
+no figure from them can be trusted.
+
+**Caveats the report must carry** (in addition to those in
+[BENCHMARK_SCOPES.md](docs/BENCHMARK_SCOPES.md#caveats-that-belong-in-any-write-up)):
+
+- **Recall is inflated for every tool alike.** `pool_bact_plus130` includes
+  BGC-only deposits, and 9 clusters sit in it twice (once on each of two
+  accessions for one sequence). Measured effect: at most 0.003 recall and
+  0.005 matched fraction, the same direction for all three tools.
+- **SHARP has no BGC class**, so it falls entirely under "Unclassified" in
+  `mibig_by_class` and `raw_by_class`.
+- **SHARP calls ~64 regions per actinomycete genome** (antiSMASH ~19, DeepBGC
+  ~85): every block is a region, including those anchored only on an afsR-box
+  heptarepeat (43% of them in the actinomycete run, 44% in the MiBIG one). This
+  is why its matched fraction is low.
+- **SHARP's extent is its gene span.** The padded `block_id` window
+  (`--extent block`) scored ~6 points more detection recall on the same data,
+  with looser boundaries.
+- **13 MiBIG loci crashed in the sharptool run** (10 `EmptyDataError`, 3 with no
+  protein from Bakta) and count as misses: at most 13 clusters, ~1 point of
+  recall.
+- **SHARP's JSON has no `provenance` block**; it was scored with `sharp.evaluate`
+  directly rather than through `run_benchmark.sh`.
 
 ## Utilities
 
