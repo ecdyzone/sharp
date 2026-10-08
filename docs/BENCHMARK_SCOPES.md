@@ -63,6 +63,15 @@ pool means the scenario-#4 sanity table and any future coverage-based refinement
 cost no second campaign. So: **pool them, filter them at scope time** with
 `--min-length` (the default, 1 Mb, drops them).
 
+About 87 of them are **under 20 kb**. Prodigal's default mode refuses
+those, so DeepBGC finds no proteins and writes no `.bgc.tsv` (e.g. `AB448947.1`,
+5 kb: `Sequence must be 20000 characters`). Both DeepBGC run scripts pass
+`--prodigal-meta-mode` only below 20 kb, the same cutoff antiSMASH 8 applies
+internally. No headline scope is affected either way, because `--min-length`
+already drops them. What is affected is the scenario-#4 table and
+`merge_predictions.py`'s "produced no output" report. The rationale is in
+README → "Running on Slurm".
+
 ### What it costs
 
 Only ~300 of the 1,112 accessions are genome-scale; the rest are ~67 kb deposits
@@ -292,7 +301,10 @@ Both arrays are resumable: a task whose result file already exists
 (`<ACC>/<ACC>.json` for antiSMASH, `<ACC>/<ACC>.bgc.tsv` for DeepBGC) exits
 immediately. Resubmit the whole array to fill gaps; already-done genomes cost
 seconds. This is also what makes widening a scope cheap later — only new genomes
-run.
+run. It is also how to recover the DeepBGC tasks that failed on sub-20 kb
+inputs before meta mode was added: pull the fix on the server and resubmit the
+same array. Only the genomes with no `.bgc.tsv` rerun, and DeepBGC writes into
+their leftover output directories without complaint.
 
 Watch for one failure mode: a task killed on walltime leaves a partial output
 directory with no result file, so it is retried — but antiSMASH may refuse to

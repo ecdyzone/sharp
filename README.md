@@ -405,6 +405,30 @@ script over `AL645882.2`: **0.86 cores, 1.71 GB, 32m24s**. Despite `hmmscan`
 dominating the runtime, DeepBGC does not thread it, so the pipeline is serial —
 an earlier 8-core allocation ran at 10.73% CPU efficiency.
 
+**Inputs under 20 kb run Prodigal in meta mode.** Prodigal's default mode
+trains a gene model on the input and refuses anything shorter than 20 kb
+(`Sequence must be 20000 characters`). DeepBGC then finds no proteins, writes
+no `.bgc.tsv`, and the array task fails. This hits BGC-only deposits such as
+`AB448947.1` (5 kb), about 87 records in the bacterial pool. Both DeepBGC
+scripts pass `--prodigal-meta-mode` **only** when the whole FASTA is under
+20 kb. That is deliberate:
+
+- Meta mode uses generic pre-trained models, which call genes worse than a
+  model trained on the genome itself. A complete high-GC *Streptomyces*
+  chromosome should keep the self-trained model.
+- Every genome that already succeeded is unaffected, so a resumed pool never
+  mixes gene callers between runs from before and after the change.
+- antiSMASH 8 applies the same rule internally
+  (`antismash/common/subprocessing/prodigal.py`: `-p meta` when
+  `len(sequence) < 20000`), so the two tools stay comparable.
+
+DeepBGC's flag covers every record in a file, but Prodigal runs once per
+record. So a multi-contig assembly over 20 kb total still has each contig under
+20 kb skipped by DeepBGC; antiSMASH, which decides per record, keeps them. This
+is left alone on purpose, because meta mode for the whole assembly would
+degrade its long contigs. See caveat 4 under
+[Comparing tools without a ground truth](#comparing-tools-without-a-ground-truth).
+
 antiSMASH's sizing (4 cores / 4G) is measured the same way. It accepts `--cpus`
 and hands it to its own module scheduler, but that scheduler parallelises very
 little in practice: `seff` on array job 45315 index 1 — which ran the same
@@ -797,6 +821,12 @@ ways. Read these once before reading any number:
 3. **A count is a threshold, not a fact.** DeepBGC's `deepbgc_score` and GECCO's
    `average_p` move the count freely. antiSMASH is rule-based (`p_bgc = 1.0`),
    so it is flat across thresholds. Sweep and report the curve, not one point.
+4. **On draft assemblies, DeepBGC cannot see contigs under 20 kb.** Prodigal's
+   default mode refuses them and DeepBGC skips them one record at a time.
+   antiSMASH switches those records to meta mode and keeps them. On a
+   fragmented assembly, some of DeepBGC's lower count is contigs it never
+   annotated, not regions it rejected. The run scripts only use meta mode when
+   the whole file is under 20 kb (see [Running on Slurm](#running-on-slurm)).
 
 The flow reuses the normal pipeline; only the keying differs. A genome database
 is keyed by **assembly** while everything downstream is keyed by **contig**, so
