@@ -381,8 +381,9 @@ the same `--contigs` file, writing `benchmark_deepbgc.json` / `benchmark_gecco.j
 repo) — it runs outside this env like the others, and leaves one
 `neighborhoods.tsv` per run: one row per protein, grouped into **blocks**, each
 block being one predicted region. The converter collapses each block to its gene
-span (first gene start to last gene end; `--extent block` uses the padded
-`block_id` window instead), converts its 1-based inclusive coordinates
+span (first gene start to last gene end, each gene clipped to the block window,
+since a gene crossing the origin of a circular chromosome is written as
+`1..<contig length>`; `--extent block` uses the padded `block_id` window instead), converts its 1-based inclusive coordinates
 (`start - 1`), maps Bakta's `contig_1` back to the locus accession in per-locus
 runs, and splits a block that wraps the origin into two regions. SHARP has no
 score (`p_bgc = 1.0`) and no BGC class. Overlapping blocks stay separate unless

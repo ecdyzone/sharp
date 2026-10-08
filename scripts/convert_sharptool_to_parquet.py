@@ -11,9 +11,9 @@ window around each, and lists the genes inside it under one `block_id`. A
 **block is one predicted region**: rows are grouped by block and collapsed.
 
 Region extent (`--extent`):
-    genes  (default) — first gene start to last gene end of the block. This is
-           what SHARP reports as the cluster's contents, and how its author
-           measures blocks against MiBIG.
+    genes  (default) — first gene start to last gene end of the block, clipped
+           to the block window. This is what SHARP reports as the cluster's
+           contents, and how its author measures blocks against MiBIG.
     block  — the `block_id` window itself, which pads ~6 kb (median) of
            gene-less flank on each side.
 
@@ -47,6 +47,13 @@ ends reach the contig length (`nlen`) but never pass it. Converted with
 Windows on circular records can wrap the origin (`block_id` end < start). Such
 a block becomes two regions, one each side of the origin, suffixed
 `.pre_origin` / `.post_origin`.
+
+Genes are clipped to their block window before they enter a span. On complete
+circular chromosomes a gene crossing the origin is written as `start=1,
+end=<contig length>`, so unclipped, a block starting at position 1 inherits a
+whole-chromosome span (7 regions of 2.5-10 Mb in the 2026-10-08 genome-database
+run, against windows of at most 440 kb). Genes that only overhang the window
+edge by a few kb are trimmed the same way.
 
 Overlapping blocks (~15% of them) are kept as separate regions, since that is
 what SHARP outputs. `--merge-overlapping` merges them per contig instead.
@@ -185,16 +192,29 @@ class Block:
     def block_id(self) -> str:
         return f"{self.contig}:{self.start}-{self.end}"
 
-    def add_gene(self, start: int, end: int) -> None:
+    def add_gene(self, start: int, end: int) -> bool:
+        """Extend the span with one gene, clipped to the window. Returns True
+        if the gene reached past the window (clipped, or dropped if nothing of
+        it is left inside)."""
         # In a wrapping block, a gene at or past the window start sits before
         # the origin; anything else sits after it.
-        side = PRE if not self.wraps or start >= self.start else POST
+        if not self.wraps:
+            side, lo, hi = PRE, self.start, self.end
+        elif start >= self.start:
+            side, lo, hi = PRE, self.start, self.contig_length or end
+        else:
+            side, lo, hi = POST, 1, self.end
+        clipped = start < lo or end > hi
+        start, end = max(start, lo), min(end, hi)
+        if end < start:
+            return clipped
         span = self.spans.get(side)
         if span is None:
             self.spans[side] = [start, end]
         else:
             span[0] = min(span[0], start)
             span[1] = max(span[1], end)
+        return clipped
 
 
 def block_to_regions(block: Block, extent: str = "genes") -> list[PredictedRegion]:
@@ -241,6 +261,7 @@ class ParseStats:
     rows: int = 0
     skipped_rows: int = 0
     origin_genes: int = 0       # a gene that itself spans the origin (end < start)
+    clipped_genes: int = 0      # a gene reaching past its block window
     bakta_rows: int = 0
     samples: set[str] = field(default_factory=set)
     bakta_contigs: dict[str, set[str]] = field(default_factory=lambda: collections.defaultdict(set))
@@ -289,7 +310,7 @@ def accumulate_blocks(
         if coords[1] < coords[0]:
             stats.origin_genes += 1
             continue
-        block.add_gene(*coords)
+        stats.clipped_genes += block.add_gene(*coords)
 
     ambiguous = {s: c for s, c in stats.bakta_contigs.items() if len(c) > 1}
     if ambiguous:
@@ -393,6 +414,7 @@ def inspect(path: Path, extent: str = "genes") -> None:
     print(f"feature types: {dict(types.most_common())}")
     print(f"CDS span vs protein length: {dict(conventions.most_common())}")
     print(f"genes spanning the origin (left out of spans): {stats.origin_genes}")
+    print(f"genes reaching past their block window (clipped): {stats.clipped_genes}")
 
     n_wrap = sum(b.wraps for b in blocks.values())
     print(f"\nn_blocks: {len(blocks)}  (wrapping the origin: {n_wrap})")
@@ -430,6 +452,8 @@ def convert(
         LOG.warning("skipped %d unparseable row(s)", stats.skipped_rows)
     if stats.origin_genes:
         LOG.info("%d gene(s) span the origin; left out of gene spans", stats.origin_genes)
+    if stats.clipped_genes:
+        LOG.info("%d gene(s) reach past their block window; clipped to it", stats.clipped_genes)
     LOG.info("%d rows → %d blocks over %d samples (%d rows Bakta-renamed)",
              stats.rows, len(blocks), len(stats.samples), stats.bakta_rows)
 

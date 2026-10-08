@@ -140,6 +140,34 @@ class TestBlockToRegions:
         [r] = block_to_regions(b, "genes")
         assert (r.region_id, r.start, r.end) == ("LC361337.1:22928-20275.post_origin", 2234, 14722)
 
+    def test_origin_gene_written_full_length_is_clipped_to_window(self) -> None:
+        # Real case: NZ_CP016793.1:1-6575 on a ~10 Mb chromosome. A gene
+        # crossing the origin is written start=1, end=<contig length>;
+        # unclipped, the region was 9,997,872 bp long.
+        b = Block("NZ_CP016793.1", 1, 6575, contig_length=9997872)
+        assert b.add_gene(1, 9997872) is True
+        assert b.add_gene(2001, 3000) is False
+        [r] = block_to_regions(b, "genes")
+        assert (r.start, r.end) == (0, 6575)
+
+    def test_gene_overhanging_window_end_is_trimmed(self) -> None:
+        # Real case: LC208006.1:165-139022, last gene ending at 144335.
+        b = Block("LC208006.1", 165, 139022)
+        b.add_gene(10001, 20000)
+        assert b.add_gene(130001, 144335) is True
+        [r] = block_to_regions(b, "genes")
+        assert (r.start, r.end) == (10000, 139022)
+
+    def test_gene_wholly_outside_window_is_dropped(self) -> None:
+        b = Block("C.1", 100, 900)
+        assert b.add_gene(1001, 1200) is True
+        assert b.spans == {}
+
+    def test_wrapping_pre_origin_side_is_clipped_to_contig_length(self) -> None:
+        b = Block("C.1", 9000, 500, contig_length=10000)
+        assert b.add_gene(9501, 10300) is True
+        assert b.spans == {"pre_origin": [9501, 10000]}
+
     def test_wrapping_block_without_length_is_skipped(self) -> None:
         assert block_to_regions(Block("C.1", 9000, 500), "block") == []
 
@@ -179,6 +207,13 @@ class TestAccumulateBlocks:
         [block] = accumulate_blocks(rows, stats).values()
         assert block.spans == {"pre_origin": [101, 400]}
         assert stats.origin_genes == 1
+
+    def test_genes_past_the_window_are_counted(self) -> None:
+        stats = ParseStats()
+        rows = [gene_row(start="101", end="400"), gene_row(start="901", end="1100")]
+        [block] = accumulate_blocks(rows, stats).values()
+        assert block.spans == {"pre_origin": [101, 1000]}
+        assert stats.clipped_genes == 1
 
     def test_sample_with_two_bakta_contigs_is_refused(self) -> None:
         rows = [gene_row(), gene_row(nucleotide="contig_2", block_id="contig_2:1-1000")]
