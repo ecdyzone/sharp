@@ -95,7 +95,18 @@ cd "$DEEPBGC_DIR"
 # Confirm the models actually resolve from this node before running.
 pixi run deepbgc info
 
-pixi run deepbgc pipeline "$GENOME" --output "$OUTDIR"
+# Prodigal's default mode refuses inputs under 20 kb ("Sequence must be 20000
+# characters"), so a BGC-only deposit passed as $1 would yield no proteins and
+# no BGCs. Meta mode only below that size, matching antiSMASH 8's own rule;
+# see run_deepbgc_array.sbatch for why it is not always on.
+SEQ_LEN=$(grep -v '^>' "$GENOME" | tr -d '\n\r' | wc -c)
+PRODIGAL_ARGS=()
+if (( SEQ_LEN < 20000 )); then
+    echo "Sequence is ${SEQ_LEN} bp (< 20 kb): using --prodigal-meta-mode"
+    PRODIGAL_ARGS=(--prodigal-meta-mode)
+fi
+
+pixi run deepbgc pipeline "$GENOME" ${PRODIGAL_ARGS[@]+"${PRODIGAL_ARGS[@]}"} --output "$OUTDIR"
 
 echo
 echo "Done. Convert with:"

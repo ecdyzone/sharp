@@ -177,10 +177,33 @@ if [[ -s "$RESULT" ]]; then
     exit 0
 fi
 
+# Prodigal's default (single) mode trains a gene model on the input and refuses
+# anything under 20 kb -- "Sequence must be 20000 characters" -- after which
+# DeepBGC finds no proteins and writes no .bgc.tsv. Those inputs are BGC-only
+# deposits (the record IS the cluster), ~87 of the bacterial pool. Meta mode
+# uses pre-trained models and works on any length, but it is worse than a
+# self-trained model on a whole chromosome, so it is gated on length rather than
+# always on: every genome that succeeds without it keeps the exact same gene
+# calls, and a resumed pool does not end up with two gene callers on genomes
+# that ran before and after this change.
+# antiSMASH 8 applies the same < 20000 rule internally
+# (antismash/common/subprocessing/prodigal.py), so this keeps the tools even.
+#
+# The switch is per FILE because DeepBGC's flag is: it applies to every record.
+# A multi-record assembly over 20 kb total still has its short contigs skipped
+# one by one -- a known DeepBGC limitation, left alone on purpose, since meta
+# mode for the whole assembly would degrade its long contigs.
+SEQ_LEN=$(grep -v '^>' "$GENOME" | tr -d '\n\r' | wc -c)
+PRODIGAL_ARGS=()
+if (( SEQ_LEN < 20000 )); then
+    echo "Sequence is ${SEQ_LEN} bp (< 20 kb): using --prodigal-meta-mode"
+    PRODIGAL_ARGS=(--prodigal-meta-mode)
+fi
+
 mkdir -p "$OUTROOT"
 cd "$DEEPBGC_DIR"
 
-pixi run deepbgc pipeline "$GENOME" --output "$OUTDIR"
+pixi run deepbgc pipeline "$GENOME" ${PRODIGAL_ARGS[@]+"${PRODIGAL_ARGS[@]}"} --output "$OUTDIR"
 
 if [[ ! -s "$RESULT" ]]; then
     echo "ERROR: DeepBGC finished but $RESULT is missing or empty" >&2
