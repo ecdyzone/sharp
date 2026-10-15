@@ -5,12 +5,12 @@
 # Default: AL645882.2 — Streptomyces coelicolor A3(2) chromosome. It carries 15
 # coordinate-resolved MiBIG clusters in data/raw/streptomyces_ground_truth.tsv,
 # the most of any single contig, which is what makes it a usable recall target
-# (see TODO.md: AL589148.1 has exactly one, so every recall number from it is
+# (AL589148.1 has exactly one, so every recall number from it is
 # 0/1 or 1/1).
 #
 # Also writes the `--contigs` scope file that every tool in a comparison must
 # share. Omitting --contigs makes recall optimistic and lets the three baselines
-# drift apart — see CLAUDE.md "Benchmark scope caveat".
+# drift apart — see README.md "How evaluation works".
 #
 # Usage:
 #   scripts/download_genome.sh                 # AL645882.2, the default

@@ -161,8 +161,9 @@ finished when the merge ran, which is the field to check if a number looks stale
 ## Not in the schema, on purpose
 
 Region-level `precision` and any `false_positive` list, for the reason above.
-AUROC, until `predict.py` scores negatives too. Per-class breakdown, not built
-yet. See the omissions table in [CLAUDE.md](../CLAUDE.md).
+AUROC requires scores for all candidates, not only reported positive regions.
+Per-class breakdown is not built into the evaluation JSON; report tables provide
+a separate per-class recovery view.
 
 One caveat applies to every absolute number: denominators are *coordinate-resolved*
 MiBIG. About half of MiBIG's entries have no coordinates and are dropped, skewed

@@ -3,7 +3,7 @@
 # Run antiSMASH on the benchmark genome, on the davinci cluster.
 #
 # Submit from anywhere:
-#   sbatch ~/projects/igem2026/git-clones/sharp/scripts/run_antismash.sbatch
+#   sbatch ~/sharp-benchmarks/scripts/run_antismash.sbatch
 #
 # Optionally override the genome (default: the S. coelicolor benchmark contig):
 #   sbatch scripts/run_antismash.sbatch /path/to/other.fasta
@@ -18,7 +18,7 @@
 # analysis modules (NRPS/PKS domain prediction, ClusterBlast comparisons against
 # the reference DB, etc.). All of it is CPU-bound HMMER and DIAMOND work with no
 # GPU code path at all, so as with DeepBGC there is nothing for an L40S or A30
-# to do here -- leave the GPU nodes for the ESM-2 embedding step.
+# to do here -- leave GPU nodes available for GPU workloads.
 #
 # ── Sizing, measured ────────────────────────────────────────────────────────
 # MEASURED on the davinci cluster. This script previously reserved 16 cores /
@@ -58,7 +58,7 @@ set -euo pipefail
 
 # ── Explicit paths ──────────────────────────────────────────────────────────
 ANTISMASH_DIR="$HOME/projects/antismash"
-SHARP_DIR="$HOME/projects/igem2026/git-clones/sharp"
+SHARP_DIR="${SHARP_BENCHMARKS_DIR:-$HOME/sharp-benchmarks}"
 ANTISMASH_DB="$HOME/projects/databases/antismash/databases"
 
 # First argument overrides the genome; otherwise the benchmark contig.

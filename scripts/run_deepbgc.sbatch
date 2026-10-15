@@ -3,7 +3,7 @@
 # Run DeepBGC on the benchmark genome, on the davinci cluster.
 #
 # Submit from anywhere:
-#   sbatch ~/projects/igem2026/git-clones/sharp/scripts/run_deepbgc.sbatch
+#   sbatch ~/sharp-benchmarks/scripts/run_deepbgc.sbatch
 #
 # Optionally override the genome (default: the S. coelicolor benchmark contig):
 #   sbatch scripts/run_deepbgc.sbatch /path/to/other.fasta
@@ -25,7 +25,7 @@
 # runtime as expected, but DeepBGC does not thread it. See the sizing block below.
 #
 # n01 is the only GPU-free node, so running here leaves gn01-03 for work that
-# is actually GPU-bound (the ESM-2 embedding step).
+# is actually GPU-bound.
 
 # ── Sizing, measured not guessed ────────────────────────────────────────────
 # From `seff` on job 42995 (AL645882.2, 8.7 Mb, this exact script):
@@ -59,7 +59,7 @@ set -euo pipefail
 
 # ── Explicit paths ──────────────────────────────────────────────────────────
 DEEPBGC_DIR="$HOME/projects/deepbgc"
-SHARP_DIR="$HOME/projects/igem2026/git-clones/sharp"
+SHARP_DIR="${SHARP_BENCHMARKS_DIR:-$HOME/sharp-benchmarks}"
 
 # `deepbgc download` and `deepbgc pipeline` read this from the environment --
 # there is no CLI flag for it. setup_deepbgc.sh also bakes it into the tool's

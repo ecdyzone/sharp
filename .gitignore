@@ -243,3 +243,13 @@ __marimo__/
 logs/
 *.out
 *.err
+
+# Delivery: independent environments/data stay local.
+.dvc/
+.env*
+!.env.example
+
+# The parent team repo ignores *.tsv and *.html globally. Keep benchmark source
+# fixtures and existing notebook exports; local run data remains ignored below.
+!tests/fixtures/*.tsv
+!notebooks/conversions/*.html

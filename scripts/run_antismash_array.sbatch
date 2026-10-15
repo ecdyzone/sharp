@@ -108,7 +108,7 @@ set -euo pipefail
 
 # ── Explicit paths ──────────────────────────────────────────────────────────
 ANTISMASH_DIR="$HOME/projects/antismash"
-SHARP_DIR="$HOME/projects/igem2026/git-clones/sharp"
+SHARP_DIR="${SHARP_BENCHMARKS_DIR:-$HOME/sharp-benchmarks}"
 ANTISMASH_DB="$HOME/projects/databases/antismash/databases"
 
 # Read fresh by every task, at the moment that task starts -- NOT snapshotted

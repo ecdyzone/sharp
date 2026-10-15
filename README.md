@@ -1,150 +1,81 @@
-# S(H)ARP
+# SHARP benchmarks
 
-S(H)ARP predicts Biosynthetic Gene Clusters (BGCs) in *Streptomyces* and related
-actinomycetes using **SARP transcription factors as anchors**, combining regulatory
-context with protein language model embeddings rather than biosynthetic enzyme
-patterns alone.
+Standalone benchmarks comparing the team's SHARP tool (`sharptool` here) with
+antiSMASH, DeepBGC and GECCO. This project prepares reference data, converts tool
+outputs, evaluates predictions, and produces report tables and figures.
 
-> GitHub Pages: <https://ecdyzone.github.io/sharp>  
-> GitHub repository: <https://github.com/ecdyzone/sharp>  
-> DAG diagram: <https://ecdyzone.github.io/sharp/docs/sharp_dag.html>  
+The source can live under `iGEM_analysis/benchmarks` in the team repository.
+Install and run a separate copy with its own Pixi environment; the internal
+Python package remains named `sharp` and must stay separate from the team's
+SHARP environment.
 
-Click the links below for the interactive HTML pages:
+## Install an independent copy
 
-- [DAG diagram (directed acyclic graph)](docs/sharp_dag.html) - Project flowchart, showing inputs-processes-outputs.
-- [Descriptive page](docs/sharp_pipeline.html) - Practically the same content as the DAG diagram, but presented with a less technical interface.
+Requires Linux x86-64, Bash, tar and Pixi. The installer copies the benchmark
+source and installs its locked environment. It does not download datasets,
+install baseline tools, or submit jobs.
 
-## Table of Contents
+```bash
+# From the benchmark source folder (e.g. iGEM_analysis/benchmarks):
+bash install.sh
+cd ~/sharp-benchmarks
+pixi run pytest
 
-- [Quickstart](#quickstart)
-- [Setting up](#setting-up)
-- [Pipeline steps](#pipeline-steps)
-- [Ground truth](#ground-truth)
-- [Benchmarking](#benchmarking)
-  - [Run once, slice many](#run-once-slice-many--the-benchmarking-approach)
-  - [Benchmarking in a shared clone](#benchmarking-in-a-shared-clone)
-  - [Which genomes, and which slices](#which-genomes-and-which-slices)
-  - [Comparing tools without a ground truth](#comparing-tools-without-a-ground-truth)
-  - [Report tables and figures](#report-tables-and-figures)
-  - [Reproducing the published report](#reproducing-the-published-report)
-- [Utilities](#utilities)
-- [Tests](#tests)
-- [Directory Structure](#directory-structure)
-- [Currently Working on](#currently-working-on)
+# Or choose another destination; existing destinations are refused:
+bash /path/to/benchmarks/install.sh /scratch/$USER/sharp-benchmarks
+```
+
+The installed folder is a snapshot. Maintain source changes in the repository;
+install into a new destination to try a newer version. Local `.env` files,
+environments, caches, data and previous run outputs are not copied.
+
+Every command below assumes you are inside the installed benchmark folder.
+Use its Pixi environment, independently of the team's SHARP environment.
+For development in this source checkout, `pixi install --locked` also works.
 
 ## Quickstart
 
-Just cloned the repo? This runs end to end with no data download:
+No external data or prediction tools are needed:
 
 ```bash
-pixi install                                   # set up the environment
-pixi run pytest                                # confirm it works
-
-# Benchmark against synthetic data — clusters and predictions that overlap
-# by construction, so the expected number is known in advance.
 pixi run python scripts/generate_mock_benchmark_data.py \
     --n-clusters 20 --recall-rate 0.7 --n-false-positives 5
 pixi run python -m sharp.evaluate \
     --predictions data/mock/predictions.parquet \
     --ground-truth data/mock/ground_truth.tsv \
     --output data/processed/benchmark.json
-# → detection recall=0.700 (14/20), matched 14/19 predictions
+# Expected detection recall: 0.700 (14/20), matched 14/19 predictions.
 ```
 
-Where to go next:
+## Machine-specific settings
 
-| If you want to... | Read |
-|---|---|
-| build the ground truth from MiBiG | [Ground truth](#ground-truth) |
-| compare against antiSMASH / DeepBGC / GECCO | [Benchmarking](#benchmarking) |
-| run a S(H)ARP pipeline step | [Pipeline steps](#pipeline-steps) |
-| move data onto a scratch disk | [Machine-specific settings](#machine-specific-settings-optional-env) |
+Defaults use `data/` inside the installation. Optionally copy `.env.example` to
+`.env` and set data paths, baseline installation/database locations, or an NCBI
+API key. Real environment variables take precedence over the `.env` file.
+Keep evaluation thresholds on the command line, not in `.env`.
 
-## Setting up
+The Slurm scripts retain the original cluster's resource directives and baseline
+paths. Review those for your cluster. Their benchmark path defaults to
+`~/sharp-benchmarks`; for another installation, export `SHARP_BENCHMARKS_DIR`
+before submission (and ensure Slurm exports it to jobs).
 
-First run:
+## Data and finished results
 
-```bash
-git clone https://github.com/ecdyzone/sharp
-cd sharp
-```
+Bulk datasets and previous runs are not bundled, and no DVC remote is required.
+Use the download/preparation scripts below or point commands at existing data.
+The documented published three-tool report needs its original inputs, which
+are not bundled in this delivery. Synthetic examples and tests are not measured
+biological results.
 
-then install with `pixi` or `conda`
+## Contents
 
-### Using pixi (recommended)
-
-Just run:
-
-```bash
-pixi install
-```
-
-### Using conda
-
-Option 1: use `pixi.lock`
-
-```bash
-conda create --name my-env --file pixi.lock
-```
-
-Option 2: use `environment.yml`:
-
-```bash
-conda env create -f environment.yml
-```
-
-### Machine-specific settings (optional `.env`)
-
-Everything works out of the box with no `.env` — data is read from and written to
-`./data` and the embedding step picks its device automatically. Create one only
-when this machine differs, e.g. a server that keeps the data on a scratch disk:
-
-```bash
-cp .env.example .env
-$EDITOR .env
-```
-
-```bash
-# .env — gitignored, never committed
-SHARP_DATA_ROOT=/scratch/$USER/sharp-data   # default: <repo>/data
-SHARP_DEVICE=cpu                            # default: auto (CUDA -> MPS -> CPU)
-```
-
-Setting `SHARP_DATA_ROOT` moves `raw/`, `interim/`, `processed/` and `mock/` with
-it; override one individually with `SHARP_RAW_DIR`, `SHARP_INTERIM_DIR`,
-`SHARP_PROCESSED_DIR` or `SHARP_MOCK_DIR`. See `.env.example` for all keys.
-
-A real environment variable beats the file, so a single run can be redirected
-without editing anything:
-
-```bash
-SHARP_DEVICE=cpu pixi run python -m sharp.extract_embeddings ...
-```
-
-`.env` holds **machine identity only** — where the data lives, what hardware is
-present, and credentials once a step needs them. Pipeline parameters (thresholds,
-model choice, batch sizes) stay on the CLI so a run remains reproducible from the
-command that produced it.
-
-
-## Pipeline steps
-
-> For reproducing with conda/mamba you have to:
->
-> - `conda activate <environment-name>`
-> - run the commands below without `pixi run`
-
-### Extract Embeddings
-
-```bash
-## 1. Generate test data
-pixi run python scripts/generate_mock_data.py --n 100
-
-## 2. Run the step against it
-pixi run python -m sharp.extract_embeddings \
-    --input data/mock/neighborhood_proteins.faa \
-    --output data/interim/embeddings.parquet
-```
+- [Ground truth](#ground-truth)
+- [Benchmarking](#benchmarking)
+- [Report tables and figures](#report-tables-and-figures)
+- [Reproducing the published report](#reproducing-the-published-report)
+- [Utilities](#utilities)
+- [Tests](#tests)
+- [Directory Structure](#directory-structure)
 
 ## Ground truth
 
@@ -161,8 +92,7 @@ its output.
 > coordinates, so they cannot be scored and are dropped. The resulting ground truth
 > is around 400 loci, not 900, and the dropped half skews toward older compound-first
 > submissions. This affects every tool equally, so it does not bias the comparison —
-> but absolute recall is "recall over coordinate-resolved MiBiG". See `CLAUDE.md`
-> for the full analysis.
+> but absolute recall is "recall over coordinate-resolved MiBiG". See the coverage details below.
 
 ### Preparing MiBiG Database
 
@@ -213,7 +143,7 @@ the *comparison* stays unbiased.
 
 Secondary, noisy ground truth (labels are themselves antiSMASH predictions —
 report alongside MiBiG, never alone). The dump is 204k antiSMASH `.gbk` files
-downloaded by `scripts/download_bgc-atlas.sh` (DVC-managed).
+downloaded by `scripts/download_bgc-atlas.sh`.
 
 ```bash
 # Inspect a few real files first (verify the schema on disk)
@@ -442,7 +372,7 @@ tail -f deepbgc-scoe-<jobid>.out
 Both request CPU only, and no GPU. DeepBGC is Prodigal → `hmmscan` vs Pfam (both
 CPU-bound, and together the bulk of the runtime) → a small Keras classifier. Only
 that last stage could use a GPU and it is a rounding error in the total, so a GPU
-allocation would sit idle — leave the GPU nodes for the ESM-2 embedding step.
+allocation would sit idle — leave GPU nodes available for GPU workloads.
 antiSMASH has no GPU code path at all.
 
 DeepBGC's sizing (2 cores / 8G / 2h) comes from `seff` on a real run of this
@@ -553,7 +483,6 @@ is free:
 The genomes are downloaded once too, into `data/raw/genomes/<ACC>.fasta`, keyed
 by accession — so a new scope needs no download of its own either.
 
-See also [TODO.md](TODO.md) for the scenarios queued against the shared pool.
 
 ### Benchmarking in a shared clone
 
@@ -563,7 +492,7 @@ checkout, and everyone benchmarks inside it. Producing a number is then a
 minutes-long merge-and-score, not a multi-day job array.
 
 ```bash
-cd <the shared clone>                    # e.g. ~<owner>/projects/igem2026/git-clones/sharp
+cd <the shared clone>                    # e.g. ~<owner>/sharp-benchmarks
 
 scripts/run_benchmark.sh                 # no scope: lists the ones that exist
 scripts/run_benchmark.sh benchmark_set_strep --label $USER
@@ -975,7 +904,7 @@ yet still has its slot:
    figures (PNG + SVG).
 
 Both run in the light `report` environment (`pixi run -e report ...`), which
-has pandas/matplotlib/seaborn but not pytorch or bakta, so they work on a
+has the plotting dependencies and no prediction-tool installation, so they work on a
 laptop that holds only a copy of the benchmark outputs.
 
 ```bash
@@ -1136,16 +1065,13 @@ no figure from them can be trusted.
 
 ### Converting Parquet to TSV
 
-Any parquet file the pipeline produces (`predictions.parquet`,
-`embeddings.parquet`, `kg_features.parquet`, ...) can be dumped to a plain
-TSV for inspection or sharing. List-typed columns (e.g. `embeddings.parquet`'s
-`embedding` vector) have no TSV representation, so they're joined into a
-single comma-separated cell — this is a one-way, informational dump, not a
-round-trippable format.
+Any predictions parquet file can be dumped to TSV for inspection or sharing.
+List-typed columns are joined into comma-separated cells; this is an
+informational dump rather than a round-trippable format.
 
 ```bash
 # Inspect the schema first, especially for anything with list-typed columns
-pixi run python scripts/parquet_to_tsv.py --inspect data/interim/embeddings.parquet
+pixi run python scripts/parquet_to_tsv.py --inspect data/interim/predictions.parquet
 
 pixi run python scripts/parquet_to_tsv.py \
     --input data/interim/predictions.parquet \
@@ -1183,108 +1109,88 @@ pixi run pytest
 
 ## Directory Structure
 
-```bash
+```text
 .
-├── .env.example                          # template for machine-specific settings (copy to .env)
-├── benchmarks
-├── config
-├── data
-├── docs
-│   ├── BENCHMARK_SCOPES.md               # the genome pool, every scope carved from it, and how to build both
-│   ├── METRICS.md                        # field-by-field companion for reading a benchmark.json
-│   ├── NCBI_MIRROR.md                    # why the benchmark downloads instead of reading the cluster mirror
-│   ├── sharp_dag.html
-│   └── sharp_pipeline.html
-├── environment.yml
-├── LICENSE
-├── notebooks
-│   ├── benchmarks_part1.py
-│   ├── benchmarks_part2.py
-│   ├── conversions
-│   │   ├── benchmarks_part1.html
-│   │   ├── benchmarks_part1.ipynb
-│   │   ├── benchmarks_part2.html
-│   │   └── benchmarks_part2.ipynb
-│   └── inspecting_parquet.py
-├── pixi.lock
-├── pixi.toml
-├── pyproject.toml
+├── install.sh                  # copy and install outside the team repo
 ├── README.md
-├── scripts
-│   ├── build_genome_manifest.py          # genome database -> assembly/contig manifest + symlink farm
-│   ├── build_report_tables.py            # benchmark outputs -> tidy TSVs behind the report figures
-│   ├── convert_antismash_to_parquet.py   # antiSMASH JSON -> predictions.parquet (no coord conversion)
-│   ├── convert_deepbgc_to_parquet.py     # DeepBGC .bgc.tsv -> predictions.parquet (no coord conversion)
-│   ├── convert_gecco_to_parquet.py       # GECCO .clusters.tsv -> predictions.parquet (start-1: 1-based -> 0-based)
-│   ├── convert_sharptool_to_parquet.py   # sharptool neighborhoods.tsv -> predictions.parquet (one region per block, start-1)
+├── CLAUDE.md
+├── .env.example
+├── .gitignore
+├── LICENSE
+├── pyproject.toml
+├── pixi.toml
+├── pixi.lock
+├── environment.yml
+├── src/sharp/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── evaluate.py
+│   ├── io.py
+│   ├── metrics.py
+├── scripts/
+│   ├── _fetch_nuccore.sh
+│   ├── _load_env.sh
+│   ├── build_genome_manifest.py
+│   ├── build_report_tables.py
+│   ├── convert_antismash_to_parquet.py
+│   ├── convert_deepbgc_to_parquet.py
+│   ├── convert_gecco_to_parquet.py
+│   ├── convert_sharptool_to_parquet.py
+│   ├── download_benchmark_genomes.sh
 │   ├── download_bgc-atlas.sh
-│   ├── download_benchmark_genomes.sh     # benchmark set TSV -> data/raw/genomes/<ACC>.fasta (resumable)
-│   ├── download_genome.sh                # NCBI accession -> data/raw/<ACC>.fasta + --contigs scope file
+│   ├── download_genome.sh
 │   ├── download_mibig.sh
 │   ├── generate_mock_benchmark_data.py
-│   ├── merge_predictions.py              # per-genome tool outputs -> one predictions.parquet
-│   ├── run_benchmark.sh                  # score one scope against the shared pool (merge + evaluate)
-│   ├── generate_mock_data.py
-│   ├── parquet_to_tsv.py                 # generic parquet -> TSV dump (any pipeline parquet file)
-│   ├── plot_report_figures.py            # report TSVs -> figures (PNG + SVG) for the wiki / papers
-│   ├── predictions_to_ground_truth.py    # one tool's predictions as a reference, for tool-vs-tool agreement
+│   ├── merge_predictions.py
+│   ├── parquet_to_tsv.py
+│   ├── plot_report_figures.py
+│   ├── predictions_to_ground_truth.py
 │   ├── prepare_bgcatlas_ground_truth.py
 │   ├── prepare_mibig_ground_truth.py
-│   ├── select_benchmark_genomes.py       # ground truth -> benchmark genome set + scope + normalized GT
-│   ├── summarize_predictions.py          # raw tool-vs-tool counts over a genome database (no ground truth)
-│   ├── _fetch_nuccore.sh          # sourced by the downloaders: efetch + "is this really FASTA" check
-│   ├── _load_env.sh               # sourced by the setup scripts: loads .env, exports it
-│   ├── setup_antismash.sh         # install baseline into its own isolated pixi env
+│   ├── run_antismash.sbatch
+│   ├── run_antismash_array.sbatch
+│   ├── run_benchmark.sh
+│   ├── run_deepbgc.sbatch
+│   ├── run_deepbgc_array.sbatch
+│   ├── select_benchmark_genomes.py
+│   ├── setup_antismash.sh
 │   ├── setup_deepbgc.sh
 │   ├── setup_gecco.sh
-│   ├── run_antismash.sbatch              # Slurm job: antiSMASH on the benchmark genome (CPU, n01)
-│   ├── run_antismash_array.sbatch        # same, as a Slurm job array over the benchmark set
-│   ├── run_deepbgc.sbatch                # Slurm job: DeepBGC on the benchmark genome (CPU, n01)
-│   └── run_deepbgc_array.sbatch          # same, as a Slurm job array over the benchmark set
-├── src
-│   └── sharp
-│       ├── __init__.py
-│       ├── config.py
-│       ├── evaluate.py
-│       ├── extract_embeddings.py
-│       ├── io.py
-│       ├── metrics.py
-│       └── model_management.py
-└── tests
-    ├── conftest.py
-    ├── fixtures
-    │   ├── AL589148_ground_truth.tsv        # the one MiBIG cluster on AL589148.1
-    │   ├── antismash_predictions.parquet    # converted real output, benchmark regression
-    │   ├── antismash_sequence.json          # trimmed real antiSMASH 8.0.4 summary
-    │   ├── deepbgc_out.bgc.tsv              # real (unmodified) DeepBGC 0.1.0 output
-    │   ├── deepbgc_predictions.parquet      # converted real output, benchmark regression
-    │   ├── gecco_predictions.parquet        # converted real output, benchmark regression
-    │   ├── gecco_sequence.clusters.tsv      # real (unmodified) GECCO 0.10.3 output
-    │   ├── sharptool_batch_neighborhoods.tsv  # real sharptool rows, genome-database run (3 blocks)
-    │   └── sharptool_loci_neighborhoods.tsv   # real sharptool rows, MiBIG loci run (3 blocks, Bakta contig_1)
-    ├── test_build_genome_manifest.py
-    ├── test_build_report_tables.py
-    ├── test_config.py
-    ├── test_convert_antismash.py
-    ├── test_convert_deepbgc.py
-    ├── test_convert_gecco.py
-    ├── test_convert_sharptool.py
-    ├── test_evaluate.py
-    ├── test_extract_embeddings.py
-    ├── test_generate_mock_data.py
-    ├── test_io.py
-    ├── test_merge_predictions.py
-    ├── test_metrics.py
-    ├── test_model_management.py
-    ├── test_parquet_to_tsv.py
-    ├── test_plot_report_figures.py
-    ├── test_predictions_to_ground_truth.py
-    ├── test_prepare_bgcatlas.py
-    ├── test_prepare_mibig.py
-    ├── test_select_benchmark_genomes.py
-    └── test_summarize_predictions.py
+│   ├── summarize_predictions.py
+├── tests/
+│   ├── conftest.py
+│   ├── fixtures/
+│   ├── test_build_genome_manifest.py
+│   ├── test_build_report_tables.py
+│   ├── test_config.py
+│   ├── test_convert_antismash.py
+│   ├── test_convert_deepbgc.py
+│   ├── test_convert_gecco.py
+│   ├── test_convert_sharptool.py
+│   ├── test_evaluate.py
+│   ├── test_io.py
+│   ├── test_merge_predictions.py
+│   ├── test_metrics.py
+│   ├── test_parquet_to_tsv.py
+│   ├── test_plot_report_figures.py
+│   ├── test_predictions_to_ground_truth.py
+│   ├── test_prepare_bgcatlas.py
+│   ├── test_prepare_mibig.py
+│   ├── test_select_benchmark_genomes.py
+│   ├── test_summarize_predictions.py
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── BENCHMARK_SCOPES.md
+│   ├── METRICS.md
+│   ├── NCBI_MIRROR.md
+├── notebooks/
+│   ├── benchmarks_part1.py
+│   ├── benchmarks_part2.py
+│   ├── conversions/
+│   ├── inspecting_parquet.py
+└── data/                       # local; empty in a new installation
+    ├── raw/
+    ├── interim/
+    ├── processed/
+    └── mock/
 ```
-
-## Currently Working on
-
-- Finishing benchmarks

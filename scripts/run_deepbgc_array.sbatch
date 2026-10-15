@@ -100,7 +100,7 @@ set -euo pipefail
 
 # ── Explicit paths ──────────────────────────────────────────────────────────
 DEEPBGC_DIR="$HOME/projects/deepbgc"
-SHARP_DIR="$HOME/projects/igem2026/git-clones/sharp"
+SHARP_DIR="${SHARP_BENCHMARKS_DIR:-$HOME/sharp-benchmarks}"
 
 # `deepbgc download` and `deepbgc pipeline` read this from the environment --
 # there is no CLI flag for it. Set here so the job does not depend on the tool's

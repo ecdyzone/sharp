@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sharp"
 version = "0.1.0"
-description = "S(H)ARP — SARP-anchored BGC discovery in actinomycetes"
+description = "Standalone benchmarks for SHARP and other BGC prediction tools"
 requires-python = ">=3.11"
 
 [tool.hatch.build.targets.wheel]
@@ -14,9 +14,4 @@ packages = ["src/sharp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
-filterwarnings = [
-    "error",
-    # huggingface_hub emits these on import in some envs; not actionable for us.
-    "ignore::DeprecationWarning:huggingface_hub.*",
-    "ignore::FutureWarning:transformers.*",
-]
+filterwarnings = ["error"]

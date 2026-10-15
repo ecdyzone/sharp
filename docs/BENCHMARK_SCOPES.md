@@ -27,7 +27,7 @@ that already exists — no download, no Slurm, no waiting. That is why the pool 
 built wider than any single experiment needs: the marginal genome is cheap now
 and impossible to add cheaply later.
 
-The corollary, from `TODO.md`: **never partition the pool per experiment.** The
+The corollary: **never partition the pool per experiment.** The
 pool is keyed by accession precisely so that two scopes sharing a genome share
 one directory.
 
@@ -166,10 +166,10 @@ too noisy to interpret.
 **Per-class.** Same `analyzed_contigs.txt`, ground truth filtered on the `class`
 column. Over the bacterial GT: NRPS 302, ribosomal 281, PKS 235, NRPS/PKS
 hybrids 125, other 166, terpene 69, saccharide 20. This answers "which BGC class
-is each tool best at?", which `CLAUDE.md` lists as a deliberate omission from
+is each tool best at?", which is deliberately omitted from
 `evaluate.py` — but as a *scope* it needs no change to `evaluate.py` at all.
 
-**BGC-only deposits** (scenario #4 in `TODO.md`). The ceiling table: recall
+**BGC-only deposits**. The ceiling table: recall
 approaches 1.0 for every tool by construction. Report it separately, labelled,
 and never merge it into a headline number.
 
